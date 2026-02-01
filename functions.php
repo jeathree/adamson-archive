@@ -1,5 +1,8 @@
 <?php
 
+    // Include The Adamson Archive Admin Logic
+    require_once get_stylesheet_directory() . '/archive-admin/admin.php';
+
     // Add Styles to Frontend
     function child_enqueue_styles() {
         wp_enqueue_style('child-theme', get_stylesheet_directory_uri() . '/style.css', array(), 100);
