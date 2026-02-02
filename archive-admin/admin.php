@@ -1,6 +1,7 @@
 <?php
     require_once(__DIR__ . '/sync.php');
     require_once(__DIR__ . '/ajax.php');
+    require_once(__DIR__ . '/youtube-settings.php');
 
 // Adamson Archive Admin Page
 function adamson_archive_admin_menu() {
@@ -12,6 +13,15 @@ function adamson_archive_admin_menu() {
         'adamson_archive_admin_page',
         'dashicons-images-alt2',
         25
+    );
+    // Add YouTube Settings submenu
+    add_submenu_page(
+        'adamson-archive',
+        'YouTube Settings',
+        'YouTube Settings',
+        'manage_options',
+        'adamson-archive-youtube-settings',
+        'adamson_archive_youtube_settings_page'
     );
 }
 add_action('admin_menu', 'adamson_archive_admin_menu');
@@ -228,34 +238,52 @@ function adamson_archive_admin_page() {
         fetchAlbums({append: false});
 
         // Scan & Process: auto-refresh table after processing
+        var progressInterval = null;
+        function pollProgress() {
+            $.post(ajaxurl, {action: 'adamson_archive_scan_progress'}, function(resp) {
+                if (resp.success && resp.data && resp.data.progress) {
+                    var msgs = resp.data.progress;
+                    var html = '<div style="margin:20px 0;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;">';
+                    html += '<strong style="display:block;margin-bottom:10px;text-align:center;">Sync & Process Progress:</strong>';
+                    html += '<ul id="adamson-archive-progress-list" style="margin:0 0 0 20px;max-height:168px;overflow-y:auto;">';
+                    for (var i = 0; i < msgs.length; i++) {
+                        html += '<li>' + $('<div>').text(msgs[i]).html() + '</li>';
+                    }
+                    html += '</ul></div>';
+                    $('#adamson-archive-progress').html(html);
+                    var $list = $('#adamson-archive-progress-list');
+                    if ($list.length) {
+                        $list.scrollTop($list[0].scrollHeight);
+                    }
+                    // If last message is a finish message, stop polling and reload table
+                    if (msgs.length && (
+                        msgs[msgs.length-1].indexOf('processed and indexed') !== -1 ||
+                        msgs[msgs.length-1].indexOf('up to date') !== -1 ||
+                        msgs[msgs.length-1].indexOf('SCAN COMPLETE!') !== -1
+                    )) {
+                        clearInterval(progressInterval);
+                        progressInterval = null;
+                        $('.wp-list-table tbody').empty();
+                        offset = 0;
+                        fetchAlbums({append: false});
+                        // Optionally, clear progress after a short delay
+                        setTimeout(function() { $('#adamson-archive-progress').empty(); }, 10000);
+                    }
+                }
+            });
+        }
         $('#adamson-archive-scan-form').on('submit', function(e) {
             e.preventDefault();
             var form = $(this);
             var btn = form.find('button[type="submit"]');
             btn.prop('disabled', true).text('Processing...');
-            $.post(ajaxurl, {
-                action: 'adamson_archive_scan',
-            }, function(data) {
+            $.post(ajaxurl, { action: 'adamson_archive_scan' }, function(data) {
                 btn.prop('disabled', false).text('Scan & Process Albums');
-                var nothingNewMsg = 'No new or updated albums found. Everything is up to date.';
-                // Show progress HTML above the table
-                var $progress = $('#adamson-archive-progress');
-                $progress.html(data);
-                // If nothing new, show inline notification (WordPress style)
-                if (typeof data === 'string' && data.indexOf(nothingNewMsg) !== -1) {
-                    var notice = '<div class="notice notice-warning is-dismissible"><p>' + nothingNewMsg + '</p></div>';
-                    $progress.prepend(notice);
-                }
-                // Auto-scroll progress list to bottom
-                var $list = $('#adamson-archive-progress-list');
-                if ($list.length) {
-                    $list.scrollTop($list[0].scrollHeight);
-                }
-                // Clear table and reload first page via AJAX
-                $('.wp-list-table tbody').empty();
-                offset = 0;
-                fetchAlbums({append: false});
             });
+            // Start polling for progress
+            if (progressInterval) clearInterval(progressInterval);
+            progressInterval = setInterval(pollProgress, 2000);
+            pollProgress();
         });
     });
 
