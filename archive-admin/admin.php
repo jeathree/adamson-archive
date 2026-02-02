@@ -76,11 +76,8 @@ function adamson_archive_admin_page() {
             echo '<th>' . $label . '</th>';
             continue;
         }
-        $arrow = '';
-        if ($sort === $col) {
-            $arrow = $order === 'ASC' ? ' &#9650;' : ' &#9660;';
-        }
-        echo '<th>' . $label . $arrow . '</th>';
+        // The arrow will be rendered by JS for the current sort column
+        echo '<th><a href="#" class="adamson-archive-sort" data-sort="' . esc_attr($col) . '">' . $label . ' <span class="adamson-archive-arrow"></span></a></th>';
     }
     echo '</tr></thead><tbody></tbody></table>';
     echo '<button id="adamson-archive-load-more" class="button" style="display:none;">Load More</button>';
@@ -92,8 +89,18 @@ function adamson_archive_admin_page() {
         var offset = 0;
         var per_page = window.ADAMSON_ARCHIVE_PER_PAGE;
         var lastSearch = '';
-        var lastSort = '<?php echo esc_js($sort); ?>';
-        var lastOrder = '<?php echo esc_js($order); ?>';
+        var lastSort = $('#adamson-archive-search-form input[name="sort"]').val() || 'date_created';
+        var lastOrder = $('#adamson-archive-search-form input[name="order"]').val() || 'DESC';
+        function updateSortArrows(sort, order) {
+            $('.adamson-archive-arrow').html('');
+            var arrow = order === 'ASC' ? ' &#9650;' : ' &#9660;';
+            $('.adamson-archive-sort').each(function() {
+                if ($(this).data('sort') === sort) {
+                    $(this).find('.adamson-archive-arrow').html(arrow);
+                }
+            });
+        }
+
         function renderRows(rows, append) {
             var tbody = '';
             rows.forEach(function(row) {
@@ -118,6 +125,10 @@ function adamson_archive_admin_page() {
             } else {
                 $('.wp-list-table tbody').html(tbody);
             }
+            // Default: show arrow for current sort
+            var sort = $('#adamson-archive-search-form input[name="sort"]').val();
+            var order = $('#adamson-archive-search-form input[name="order"]').val();
+            updateSortArrows(sort, order);
         }
         function fetchAlbums(opts) {
             opts = opts || {};
@@ -156,6 +167,9 @@ function adamson_archive_admin_page() {
             clearTimeout(timer);
             timer = setTimeout(function() {
                 offset = 0;
+                // Reset sort to default for new search
+                $('#adamson-archive-search-form input[name="sort"]').val('date_created');
+                $('#adamson-archive-search-form input[name="order"]').val('DESC');
                 fetchAlbums({append: false});
             }, 300);
         });
@@ -163,12 +177,51 @@ function adamson_archive_admin_page() {
         $('#adamson-archive-search-form').on('submit', function(e) {
             e.preventDefault();
             offset = 0;
+            // Reset sort to default for new search
+            $('#adamson-archive-search-form input[name="sort"]').val('date_created');
+            $('#adamson-archive-search-form input[name="order"]').val('DESC');
             fetchAlbums({append: false});
         });
         // Load More button
         $(document).on('click', '#adamson-archive-load-more', function(e) {
             e.preventDefault();
             fetchAlbums({append: true});
+        });
+        // Sorting click handler
+        $(document).on('click', '.adamson-archive-sort', function(e) {
+            e.preventDefault();
+            var sort = $(this).data('sort');
+            var currentSort = $('#adamson-archive-search-form input[name="sort"]').val();
+            var currentOrder = $('#adamson-archive-search-form input[name="order"]').val();
+            var order = 'DESC';
+            if (sort === currentSort) {
+                order = currentOrder === 'ASC' ? 'DESC' : 'ASC';
+            }
+            $('#adamson-archive-search-form input[name="sort"]').val(sort);
+            $('#adamson-archive-search-form input[name="order"]').val(order);
+            // Client-side sort: sort only visible rows
+            var rows = $('.wp-list-table tbody tr').get();
+            rows.sort(function(a, b) {
+                var getVal = function(row, idx) {
+                    var td = $(row).children('td').eq(idx);
+                    return td.text().trim();
+                };
+                var idx = $(e.target).closest('th').index();
+                var valA = getVal(a, idx);
+                var valB = getVal(b, idx);
+                // Numeric sort if both are numbers
+                if (!isNaN(valA) && !isNaN(valB)) {
+                    valA = parseFloat(valA);
+                    valB = parseFloat(valB);
+                }
+                if (valA < valB) return order === 'ASC' ? -1 : 1;
+                if (valA > valB) return order === 'ASC' ? 1 : -1;
+                return 0;
+            });
+            $.each(rows, function(idx, row) {
+                $('.wp-list-table tbody').append(row);
+            });
+            updateSortArrows(sort, order);
         });
         // Initial state: load first page via AJAX
         fetchAlbums({append: false});
