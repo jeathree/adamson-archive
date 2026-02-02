@@ -24,13 +24,31 @@ function adamson_archive_sync_and_process() {
             $config = json_decode(file_get_contents($config_path), true);
             if (!$config) $config = [];
             $raw_name = isset($config['name']) ? $config['name'] : $album_folder;
-            $year = isset($config['year']) ? $config['year'] : date('Y');
-            $date = isset($config['date']) ? $config['date'] : date('Y-m-d');
+            // Parse year and date from folder name if missing in config
+            if (empty($config['year']) || empty($config['date'])) {
+                if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $album_folder, $m)) {
+                    $parsed_year = $m[1];
+                    $parsed_date = $m[1] . '-' . $m[2] . '-' . $m[3];
+                } else {
+                    $parsed_year = date('Y');
+                    $parsed_date = date('Y-m-d');
+                }
+                $year = !empty($config['year']) ? $config['year'] : $parsed_year;
+                $date = !empty($config['date']) ? $config['date'] : $parsed_date;
+            } else {
+                $year = $config['year'];
+                $date = $config['date'];
+            }
             $visible = isset($config['visible']) ? $config['visible'] : true;
         } else {
             $raw_name = $album_folder;
-            $year = date('Y');
-            $date = date('Y-m-d');
+            if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $album_folder, $m)) {
+                $year = $m[1];
+                $date = $m[1] . '-' . $m[2] . '-' . $m[3];
+            } else {
+                $year = date('Y');
+                $date = date('Y-m-d');
+            }
             $visible = true;
         }
         // Clean the album name: remove date, all leading/trailing dashes/spaces

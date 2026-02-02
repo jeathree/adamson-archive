@@ -1,5 +1,6 @@
 <?php
     require_once(__DIR__ . '/sync.php');
+    require_once(__DIR__ . '/ajax.php');
 
 // Adamson Archive Admin Page
 function adamson_archive_admin_menu() {
@@ -20,7 +21,7 @@ function adamson_archive_admin_page() {
 
 
     // Scan & Process Albums button
-    echo '<form method="post" style="display:inline-block;margin-right:10px;">';
+    echo '<form id="adamson-archive-scan-form" method="post" style="display:inline-block;margin-right:10px;">';
     echo '<input type="hidden" name="adamson_archive_scan" value="1">';
     echo '<button type="submit" class="button button-primary">Scan & Process Albums</button>';
     echo '</form>';
@@ -44,92 +45,153 @@ function adamson_archive_admin_page() {
     $searchSql = $search ? $wpdb->prepare("WHERE name LIKE %s OR year LIKE %s", "%$search%", "%$search%") : '';
 
     // Handle pagination (load more)
-    $per_page = 25;
+    $per_page = 2; // CHANGE THIS VALUE TO UPDATE PAGE SIZE EVERYWHERE
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
     $albums = $wpdb->get_results("SELECT * FROM adamson_archive_albums $searchSql ORDER BY $sort $order LIMIT $per_page OFFSET $offset");
     $total_albums = $wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums $searchSql");
     echo '<h2 style="margin-top:30px;">Albums</h2>';
-    echo '<form method="get" style="margin-bottom:10px;">';
-    echo '<input type="text" name="search" value="' . esc_attr($search) . '" placeholder="Search albums..." /> ';
+    echo '<form id="adamson-archive-search-form" method="get" style="margin-bottom:10px;">';
+    echo '<input type="text" name="search" id="adamson-archive-search" value="' . esc_attr($search) . '" placeholder="Search albums..." autocomplete="off" /> ';
     echo '<input type="submit" class="button" value="Search" />';
-    // Preserve sort/order in search
     echo '<input type="hidden" name="sort" value="' . esc_attr($sort) . '" />';
     echo '<input type="hidden" name="order" value="' . esc_attr($order) . '" />';
     echo '</form>';
-    if ($albums) {
-        echo '<table class="wp-list-table widefat fixed striped" style="max-width:1000px;">';
-        echo '<thead><tr>';
-        $columns = [
-            'name' => 'Name',
-            'year' => 'Year',
-            'visible' => 'Visible',
-            'processed' => 'Processed',
-            'images' => 'Images',
-            'videos' => 'Videos',
-            'date_created' => 'Date Created',
-            'actions' => 'Actions'
-        ];
-        foreach ($columns as $col => $label) {
-            if ($col === 'actions') {
-                echo '<th>' . $label . '</th>';
-                continue;
-            }
-            $newOrder = ($sort === $col && $order === 'ASC') ? 'desc' : 'asc';
-            $url = add_query_arg(['sort' => $col, 'order' => $newOrder, 'search' => $search, 'offset' => $offset]);
-            $arrow = '';
-            if ($sort === $col) {
-                $arrow = $order === 'ASC' ? ' &#9650;' : ' &#9660;'; // up or down arrow
-            }
-            echo '<th><a href="' . esc_url($url) . '">' . $label . $arrow . '</a></th>';
+    echo '<script>window.ADAMSON_ARCHIVE_PER_PAGE = ' . intval($per_page) . ';</script>';
+    echo '<div id="adamson-archive-table-container">';
+    // Only render the table shell, let JS/AJAX fill it
+    echo '<table class="wp-list-table widefat fixed striped" style="max-width:1000px;">';
+    echo '<thead><tr>';
+    $columns = [
+        'name' => 'Name',
+        'year' => 'Year',
+        'visible' => 'Visible',
+        'processed' => 'Processed',
+        'images' => 'Images',
+        'videos' => 'Videos',
+        'date_created' => 'Date Created',
+        'actions' => 'Actions'
+    ];
+    foreach ($columns as $col => $label) {
+        if ($col === 'actions') {
+            echo '<th>' . $label . '</th>';
+            continue;
         }
-        echo '</tr></thead><tbody>';
-        foreach ($albums as $album) {
-            $media = $wpdb->get_results($wpdb->prepare("SELECT type, youtube_id FROM adamson_archive_media WHERE album_id = %d", $album->id));
-            $image_count = 0;
-            $video_count = 0;
-            foreach ($media as $m) {
-                if (isset($m->youtube_id) && $m->youtube_id) {
-                    $video_count++;
-                } else {
-                    $image_count++;
-                }
-            }
-            echo '<tr>';
-            echo '<td>' . esc_html($album->name) . '</td>';
-            echo '<td>' . esc_html($album->year ?? '') . '</td>';
-            echo '<td>' . (isset($album->visible) && $album->visible ? 'Yes' : 'No') . '</td>';
-            echo '<td>' . ($album->processed ? 'Yes' : 'No') . '</td>';
-            echo '<td>' . $image_count . '</td>';
-            echo '<td>' . $video_count . '</td>';
-            echo '<td>' . esc_html($album->date_created ?? '') . '</td>';
-            echo '<td>';
-            echo '<form method="post" style="display:inline;">';
-            echo '<input type="hidden" name="adamson_archive_reprocess_album" value="' . esc_attr($album->id) . '">';
-            echo '<button type="submit" class="button">Reprocess</button>';
-            echo '</form>';
-            echo '</td>';
-            echo '</tr>';
+        $arrow = '';
+        if ($sort === $col) {
+            $arrow = $order === 'ASC' ? ' &#9650;' : ' &#9660;';
         }
-        echo '</tbody></table>';
-        // Load More button
-        if ($offset + $per_page < $total_albums) {
-            $next_offset = $offset + $per_page;
-            $url = add_query_arg([
-                'sort' => $sort,
-                'order' => $order,
-                'search' => $search,
-                'offset' => $next_offset
-            ]);
-            echo '<form method="get" style="margin-top:10px;">';
-            echo '<input type="hidden" name="sort" value="' . esc_attr($sort) . '" />';
-            echo '<input type="hidden" name="order" value="' . esc_attr($order) . '" />';
-            echo '<input type="hidden" name="search" value="' . esc_attr($search) . '" />';
-            echo '<input type="hidden" name="offset" value="' . esc_attr($next_offset) . '" />';
-            echo '<button type="submit" class="button">Load More</button>';
-            echo '</form>';
-        }
+        echo '<th>' . $label . $arrow . '</th>';
     }
+    echo '</tr></thead><tbody></tbody></table>';
+    echo '<button id="adamson-archive-load-more" class="button" style="display:none;">Load More</button>';
+    echo '</div>';
+    ?>
+    <script>
+    jQuery(document).ready(function($) {
+        var timer = null;
+        var offset = 0;
+        var per_page = window.ADAMSON_ARCHIVE_PER_PAGE;
+        var lastSearch = '';
+        var lastSort = '<?php echo esc_js($sort); ?>';
+        var lastOrder = '<?php echo esc_js($order); ?>';
+        function renderRows(rows, append) {
+            var tbody = '';
+            rows.forEach(function(row) {
+                tbody += '<tr>' +
+                    '<td>' + row.name + '</td>' +
+                    '<td>' + (row.year || '') + '</td>' +
+                    '<td>' + row.visible + '</td>' +
+                    '<td>' + row.processed + '</td>' +
+                    '<td>' + row.images + '</td>' +
+                    '<td>' + row.videos + '</td>' +
+                    '<td>' + (row.date_created || '') + '</td>' +
+                    '<td>' +
+                        '<form method="post" style="display:inline;">' +
+                        '<input type="hidden" name="adamson_archive_reprocess_album" value="' + row.id + '">' +
+                        '<button type="submit" class="button">Reprocess</button>' +
+                        '</form>' +
+                    '</td>' +
+                '</tr>';
+            });
+            if (append) {
+                $('.wp-list-table tbody').append(tbody);
+            } else {
+                $('.wp-list-table tbody').html(tbody);
+            }
+        }
+        function fetchAlbums(opts) {
+            opts = opts || {};
+            var form = $('#adamson-archive-search-form');
+            var search = form.find('input[name="search"]').val();
+            var sort = form.find('input[name="sort"]').val();
+            var order = form.find('input[name="order"]').val();
+            var fetchOffset = opts.append ? offset : 0;
+            $.post(ajaxurl, {
+                action: 'adamson_archive_search_albums',
+                search: search,
+                sort: sort,
+                order: order,
+                offset: fetchOffset
+            }, function(response) {
+                if (opts.append) {
+                    renderRows(response.rows, true);
+                    offset += response.rows.length;
+                } else {
+                    renderRows(response.rows, false);
+                    offset = response.rows.length;
+                }
+                // Show/hide Load More
+                if (offset < response.total) {
+                    $('#adamson-archive-load-more').show();
+                } else {
+                    $('#adamson-archive-load-more').hide();
+                }
+                lastSearch = search;
+                lastSort = sort;
+                lastOrder = order;
+            });
+        }
+        // Search input
+        $('#adamson-archive-search').on('input', function() {
+            clearTimeout(timer);
+            timer = setTimeout(function() {
+                offset = 0;
+                fetchAlbums({append: false});
+            }, 300);
+        });
+        // Search submit
+        $('#adamson-archive-search-form').on('submit', function(e) {
+            e.preventDefault();
+            offset = 0;
+            fetchAlbums({append: false});
+        });
+        // Load More button
+        $(document).on('click', '#adamson-archive-load-more', function(e) {
+            e.preventDefault();
+            fetchAlbums({append: true});
+        });
+        // Initial state: load first page via AJAX
+        fetchAlbums({append: false});
 
+        // Scan & Process: auto-refresh table after processing
+        $('#adamson-archive-scan-form').on('submit', function(e) {
+            e.preventDefault();
+            var form = $(this);
+            var btn = form.find('button[type="submit"]');
+            btn.prop('disabled', true).text('Processing...');
+            $.post(window.location.href, form.serialize(), function(data) {
+                btn.prop('disabled', false).text('Scan & Process Albums');
+                // Clear table and reload first page via AJAX
+                $('.wp-list-table tbody').empty();
+                offset = 0;
+                fetchAlbums({append: false});
+            });
+        });
+    });
+
+    </script>
+    <style>#adamson-archive-load-more{margin-top:10px;}</style>
+<?php
     if (isset($_POST['adamson_archive_scan'])) {
         $progress = adamson_archive_sync_and_process();
         echo '<div style="margin-top:20px;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;">';
