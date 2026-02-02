@@ -34,7 +34,7 @@ function adamson_youtube_list_uploaded_videos($access_token) {
 function adamson_archive_sync_and_process() {
     $uploads_dir = WP_CONTENT_DIR . '/uploads/albums/';
     adamson_archive_clear_progress();
-    $access_token = get_youtube_access_token();
+    $access_token = adamson_get_valid_youtube_access_token();
     if (!is_dir($uploads_dir)) {
         $progress[] = 'Albums directory not found: ' . $uploads_dir;
         return $progress;
@@ -102,13 +102,21 @@ function adamson_archive_sync_and_process() {
 
         // Check processed status in DB
         $existing_album = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM adamson_archive_albums WHERE folder = %s AND processed = 1",
+            "SELECT * FROM adamson_archive_albums WHERE folder = %s",
             $album_folder
         ));
-        if ($existing_album) {
-            adamson_archive_add_progress("$album_folder already processed, skipping.");
-            continue;
+        // Only skip if processed=1 and all expected YouTube uploads/playlists exist
+        $skip_album = false;
+        if ($existing_album && $existing_album->processed) {
+            // Check if all expected videos have youtube_id
+            $media_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM adamson_archive_media WHERE album_id = %d AND (type IN ('mp4','mov','avi','mkv','webm'))", $existing_album->id));
+            $uploaded_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM adamson_archive_media WHERE album_id = %d AND youtube_id IS NOT NULL AND youtube_id != ''", $existing_album->id));
+            if ($media_count == $uploaded_count) {
+                adamson_archive_add_progress("$album_folder already processed, skipping.");
+                $skip_album = true;
+            }
         }
+        if ($skip_album) continue;
         $any_processed = true;
 
         // Scan for media files
@@ -162,17 +170,16 @@ function adamson_archive_sync_and_process() {
         // YouTube: upload each video and add to playlist
         $video_db_rows = [];
         $video_count = 1;
+        $all_uploads_success = true;
         foreach ($video_files as $file) {
             $video_title = $year . ' ' . $clean_name . ' Video' . $video_count;
             $file_path = $album_path . '/' . $file;
             $youtube_id = null;
             // Check DB for existing YouTube ID for this file in this album
-            $existing_video = $wpdb->get_row($wpdb->prepare(
-                "SELECT youtube_id FROM adamson_archive_media WHERE filename = %s AND album_id = (
-                    SELECT id FROM adamson_archive_albums WHERE folder = %s
-                ) AND youtube_id IS NOT NULL AND youtube_id != ''",
-                $file, $album_folder
-            ));
+            $existing_video = $existing_album ? $wpdb->get_row($wpdb->prepare(
+                "SELECT youtube_id FROM adamson_archive_media WHERE filename = %s AND album_id = %d",
+                $file, $existing_album->id
+            )) : null;
             if ($existing_video && !empty($existing_video->youtube_id)) {
                 adamson_archive_add_progress("Already uploaded to YouTube: $file ($existing_video->youtube_id), skipping.");
                 $youtube_id = $existing_video->youtube_id;
@@ -180,6 +187,7 @@ function adamson_archive_sync_and_process() {
                 $result = adamson_youtube_upload_video($file_path, $video_title, $access_token, 'unlisted');
                 if (is_array($result) && isset($result['error'])) {
                     adamson_archive_add_progress("Failed to upload $file to YouTube: " . $result['error']);
+                    $all_uploads_success = false;
                 } elseif ($result) {
                     $youtube_id = $result;
                     adamson_archive_add_progress("Uploaded to YouTube: $file as $video_title ($youtube_id)");
@@ -190,13 +198,16 @@ function adamson_archive_sync_and_process() {
                             adamson_archive_add_progress("Added $video_title to playlist.");
                         } else {
                             adamson_archive_add_progress("Failed to add $video_title to playlist.");
+                            $all_uploads_success = false;
                         }
                     }
                 } else {
-                        adamson_archive_add_progress("Failed to upload $file to YouTube: Unknown error.");
+                    adamson_archive_add_progress("Failed to upload $file to YouTube: Unknown error.");
+                    $all_uploads_success = false;
                 }
             } else {
                 adamson_archive_add_progress("No YouTube access token. Skipping upload for $file.");
+                $all_uploads_success = false;
             }
             $video_db_rows[] = [
                 'album_id' => 0, // Set below after album insert
@@ -209,19 +220,37 @@ function adamson_archive_sync_and_process() {
             $video_count++;
         }
 
-        // Insert album into DB
+        // Insert or update album in DB
         $now = current_time('mysql');
-        $wpdb->insert('adamson_archive_albums', [
-            'name' => $clean_name,
-            'year' => $year,
-            'date' => $date,
-            'folder' => $album_folder,
-            'visible' => $visible ? 1 : 0,
-            'date_created' => $now,
-            'date_updated' => $now,
-            'processed' => 0
-        ]);
-        $album_id = $wpdb->insert_id;
+        if ($existing_album) {
+            // Update existing album
+            $wpdb->update('adamson_archive_albums', [
+                'name' => $clean_name,
+                'year' => $year,
+                'date' => $date,
+                'visible' => $visible ? 1 : 0,
+                'date_updated' => $now,
+                'processed' => 0
+            ], [
+                'id' => $existing_album->id
+            ]);
+            $album_id = $existing_album->id;
+            // Remove old media for this album to avoid duplicates
+            $wpdb->delete('adamson_archive_media', ['album_id' => $album_id]);
+        } else {
+            // Insert new album
+            $wpdb->insert('adamson_archive_albums', [
+                'name' => $clean_name,
+                'year' => $year,
+                'date' => $date,
+                'folder' => $album_folder,
+                'visible' => $visible ? 1 : 0,
+                'date_created' => $now,
+                'date_updated' => $now,
+                'processed' => 0
+            ]);
+            $album_id = $wpdb->insert_id;
+        }
 
         // Insert all media into DB
         foreach ($album_media_rows as $row) {
@@ -233,11 +262,17 @@ function adamson_archive_sync_and_process() {
             $wpdb->insert('adamson_archive_media', $row);
         }
 
-        // Mark album as processed in DB
-        $wpdb->update('adamson_archive_albums', ['processed' => 1], ['id' => $album_id]);
-        $processed_count++;
-        error_log('SYNC: Album processed and indexed: ' . $album_folder);
-        adamson_archive_add_progress("$album_folder processed and indexed.");
+        // Mark album as processed in DB only if all uploads/playlists succeeded
+        if ($all_uploads_success) {
+            $wpdb->update('adamson_archive_albums', ['processed' => 1], ['id' => $album_id]);
+            $processed_count++;
+            error_log('SYNC: Album processed and indexed: ' . $album_folder);
+            adamson_archive_add_progress("$album_folder processed and indexed.");
+        } else {
+            $wpdb->update('adamson_archive_albums', ['processed' => 0], ['id' => $album_id]);
+            error_log('SYNC: Album NOT fully processed due to upload/playlist errors: ' . $album_folder);
+            adamson_archive_add_progress("$album_folder NOT fully processed due to upload/playlist errors.");
+        }
     }
     error_log('SYNC: Total albums processed this run: ' . $processed_count);
     if (!$any_processed) {
@@ -275,9 +310,15 @@ function adamson_youtube_upload_video($file_path, $title, $access_token, $privac
         'body' => json_encode($metadata),
         'method' => 'POST',
     ]);
-    if (is_wp_error($init)) return ['error' => $init->get_error_message()];
+    if (is_wp_error($init)) {
+        adamson_archive_add_progress('YouTube upload init error: ' . $init->get_error_message());
+        return ['error' => $init->get_error_message()];
+    }
     $location = wp_remote_retrieve_header($init, 'location');
-    if (!$location) return ['error' => 'No upload location returned by YouTube.'];
+    if (!$location) {
+        adamson_archive_add_progress('YouTube upload error: (Quota Exceeded)');
+        return ['error' => 'No upload location returned by YouTube.'];
+    }
     // Step 2: Upload video file
     $video_data = file_get_contents($file_path);
     $mime_type = mime_content_type($file_path);
@@ -291,10 +332,21 @@ function adamson_youtube_upload_video($file_path, $title, $access_token, $privac
         'body' => $video_data,
         'method' => 'PUT',
     ]);
-    if (is_wp_error($upload)) return ['error' => $upload->get_error_message()];
+    if (is_wp_error($upload)) {
+        adamson_archive_add_progress('YouTube upload error: ' . $upload->get_error_message());
+        return ['error' => $upload->get_error_message()];
+    }
     $body = json_decode(wp_remote_retrieve_body($upload), true);
     if (isset($body['id'])) return $body['id'];
-    return ['error' => isset($body['error']['message']) ? $body['error']['message'] : 'Unknown upload error.'];
+    if (isset($body['error'])) {
+        $msg = 'YouTube upload API error: ' . ($body['error']['message'] ?? json_encode($body['error']));
+        if (isset($body['error']['errors'][0]['reason']) && $body['error']['errors'][0]['reason'] === 'quotaExceeded') {
+            $msg = 'YouTube upload error: (Quota Exceeded)';
+        }
+        adamson_archive_add_progress($msg);
+        return ['error' => $msg];
+    }
+    return ['error' => 'Unknown upload error.'];
 }
 
 // Create a YouTube playlist and return the playlist ID
@@ -317,8 +369,20 @@ function adamson_youtube_create_playlist($title, $access_token, $privacy = 'unli
         'headers' => $headers,
         'body' => json_encode($data),
     ]);
-    if (is_wp_error($response)) return false;
+    if (is_wp_error($response)) {
+        $error_msg = $response->get_error_message();
+        adamson_archive_add_progress('YouTube playlist creation error: ' . $error_msg);
+        return false;
+    }
     $body = json_decode(wp_remote_retrieve_body($response), true);
+    if (isset($body['error'])) {
+        $msg = 'YouTube playlist creation API error: ' . ($body['error']['message'] ?? json_encode($body['error']));
+        if (isset($body['error']['errors'][0]['reason']) && $body['error']['errors'][0]['reason'] === 'quotaExceeded') {
+            $msg = 'YouTube playlist creation API error: (Quota Exceeded)';
+        }
+        adamson_archive_add_progress($msg);
+        return false;
+    }
     return $body['id'] ?? false;
 }
 
@@ -369,7 +433,3 @@ function adamson_youtube_find_playlist($title, $access_token) {
     return false;
 }
 
-// Get YouTube access token
-function get_youtube_access_token() {
-    return get_option('adamson_youtube_access_token');
-}

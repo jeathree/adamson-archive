@@ -1,5 +1,44 @@
 <?php
-    // AJAX handler for scan & process
+
+// AJAX: Return media list for an album (with failed status)
+add_action('wp_ajax_adamson_archive_album_media', function() {
+    global $wpdb;
+    $album_id = intval($_POST['album_id'] ?? 0);
+    $media = $wpdb->get_results($wpdb->prepare("SELECT id, filename, youtube_id, type FROM adamson_archive_media WHERE album_id = %d ORDER BY filename", $album_id));
+    $result = [];
+    foreach ($media as $m) {
+        $failed = ($m->type === 'mp4' || $m->type === 'mov' || $m->type === 'avi' || $m->type === 'mkv' || $m->type === 'webm') && (empty($m->youtube_id));
+        $result[] = [
+            'id' => $m->id,
+            'filename' => $m->filename,
+            'failed' => $failed,
+        ];
+    }
+    wp_send_json_success(['media' => $result]);
+});
+
+
+// AJAX handler for summary dashboard
+add_action('wp_ajax_adamson_archive_summary', function() {
+    global $wpdb;
+    $total = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums");
+    $processed = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums WHERE processed = 1");
+    $failed = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums WHERE processed = 0 AND id IN (SELECT album_id FROM adamson_archive_media WHERE type IN ('mp4','mov','avi','mkv','webm') AND (youtube_id IS NULL OR youtube_id = ''))");
+    $pending = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums WHERE processed = 0 AND id NOT IN (SELECT album_id FROM adamson_archive_media WHERE type IN ('mp4','mov','avi','mkv','webm') AND (youtube_id IS NULL OR youtube_id = ''))");
+    $help_icon = function($tip) {
+        return '<span class="adamson-help-icon" title="' . htmlspecialchars($tip) . '">&#9432;</span>';
+    };
+    $html = '<div id="adamson-archive-summary">';
+    $html .= '<strong>Album Summary:</strong>';
+    $html .= '<span class="adamson-summary-total">Total: <b>' . $total . '</b>' . $help_icon('All albums in the archive, regardless of status.') . '</span>';
+    $html .= '<span class="adamson-summary-processed">Processed: <b>' . $processed . '</b>' . $help_icon('Albums where all YouTube uploads and playlist actions succeeded (fully complete).') . '</span>';
+    $html .= '<span class="adamson-summary-failed">Failed: <b>' . $failed . '</b>' . $help_icon('Albums that have at least one video or playlist that failed to upload to YouTube. These albums are not fully processed and will be retried.') . '</span>';
+    $html .= '<span class="adamson-summary-pending">Pending: <b>' . $pending . '</b>' . $help_icon('Albums that are not yet processed and have no failed YouTube uploads—typically new albums waiting to be processed, or albums with only non-video media.') . '</span>';
+    $html .= '</div>';
+    wp_send_json_success(['html' => $html]);
+});
+
+// AJAX handler for scan & process
     add_action('wp_ajax_adamson_archive_scan', function() {
         require_once(__DIR__ . '/sync.php');
         adamson_archive_sync_and_process();

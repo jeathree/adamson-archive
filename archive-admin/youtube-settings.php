@@ -1,7 +1,76 @@
-<?php
+<?php 
+
+// Utility to get a valid YouTube access token, refreshing if needed
+if (!function_exists('adamson_get_valid_youtube_access_token')) {
+    function adamson_get_valid_youtube_access_token() {
+        $access_token = get_option('adamson_youtube_access_token');
+        $refresh_token = get_option('adamson_youtube_refresh_token');
+        $client_id = get_option('adamson_youtube_client_id');
+        $client_secret = get_option('adamson_youtube_client_secret');
+        $token_info = get_option('adamson_youtube_token_info'); // stores ['expires_at'=>timestamp]
+
+        // If no access token, return false
+        if (!$access_token) return false;
+
+        // If we have expiry info, check if token is expired (with 2 min buffer)
+        if ($token_info && isset($token_info['expires_at']) && time() < $token_info['expires_at'] - 120) {
+            return $access_token;
+        }
+
+        // If we have a refresh token, try to refresh
+        if ($refresh_token && $client_id && $client_secret) {
+            $response = wp_remote_post('https://oauth2.googleapis.com/token', [
+                'body' => [
+                    'client_id' => $client_id,
+                    'client_secret' => $client_secret,
+                    'refresh_token' => $refresh_token,
+                    'grant_type' => 'refresh_token',
+                ]
+            ]);
+            if (!is_wp_error($response)) {
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (!empty($body['access_token'])) {
+                    update_option('adamson_youtube_access_token', $body['access_token']);
+                    // Save new expiry if provided
+                    if (!empty($body['expires_in'])) {
+                        update_option('adamson_youtube_token_info', [
+                            'expires_at' => time() + intval($body['expires_in'])
+                        ]);
+                    }
+                    return $body['access_token'];
+                }
+            }
+        }
+        // Fallback: return current token (may be expired)
+        return $access_token;
+    }
+}
+
 // Adamson Archive YouTube Settings Page
 
 function adamson_archive_youtube_settings_page() {
+    // --- YouTube Token/Auth Status ---
+    $client_id = get_option('adamson_youtube_client_id');
+    $client_secret = get_option('adamson_youtube_client_secret');
+    $redirect_uri = get_option('adamson_youtube_redirect_uri');
+    $access_token = get_option('adamson_youtube_access_token');
+    $refresh_token = get_option('adamson_youtube_refresh_token');
+    $token_info = get_option('adamson_youtube_token_info');
+            $status_rows = [];
+            $check = '<span style="color: #27ae60; font-size: 18px; font-weight: bold;">&#10004;</span>';
+            $cross = '<span style="color: #c0392b; font-size: 18px; font-weight: bold;">&#10006;</span>';
+            $status_rows[] = '<tr><th>Client ID</th><td>' . ($client_id ? $check : $cross) . '</td></tr>';
+            $status_rows[] = '<tr><th>Client Secret</th><td>' . ($client_secret ? $check : $cross) . '</td></tr>';
+            $status_rows[] = '<tr><th>Redirect URI</th><td>' . ($redirect_uri ? $check : $cross) . '</td></tr>';
+            $status_rows[] = '<tr><th>Access Token</th><td>' . ($access_token ? $check : $cross);
+            if ($access_token && $token_info && isset($token_info['expires_at'])) {
+                $expires_in = $token_info['expires_at'] - time();
+                $status_rows[count($status_rows)-1] .= ' (expires in ' . max(0, intval($expires_in/60)) . ' min)';
+            }
+            $status_rows[count($status_rows)-1] .= '</td></tr>';
+            $status_rows[] = '<tr><th>Refresh Token</th><td>' . ($refresh_token ? $check : $cross) . '</td></tr>';
+            echo '<h2>YouTube Auth Status</h2>';
+            echo '<table class="form-table" style="max-width:400px;">' . implode('', $status_rows) . '</table>';
     ?>
     <div class="wrap">
         <h1>YouTube Integration Settings</h1>
@@ -26,6 +95,12 @@ function adamson_archive_youtube_settings_page() {
                 $body = json_decode(wp_remote_retrieve_body($response), true);
                 if (!empty($body['access_token'])) {
                     update_option('adamson_youtube_access_token', $body['access_token']);
+                    // Store expiry info for refresh logic
+                    if (!empty($body['expires_in'])) {
+                        update_option('adamson_youtube_token_info', [
+                            'expires_at' => time() + intval($body['expires_in'])
+                        ]);
+                    }
                     if (!empty($body['refresh_token'])) {
                         update_option('adamson_youtube_refresh_token', $body['refresh_token']);
                     }
