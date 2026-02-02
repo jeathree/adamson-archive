@@ -28,7 +28,7 @@ add_action('admin_menu', 'adamson_archive_admin_menu');
 
 function adamson_archive_admin_page() {
     echo '<div class="wrap"><h1>The Adamson Archive</h1>';
-    echo '<div id="adamson-archive-progress"></div>';
+    echo '<div id="adamson-archive-progress" style="position:relative;"></div>';
 
 
     // Scan & Process Albums button
@@ -56,7 +56,7 @@ function adamson_archive_admin_page() {
     $searchSql = $search ? $wpdb->prepare("WHERE name LIKE %s OR year LIKE %s", "%$search%", "%$search%") : '';
 
     // Handle pagination (load more)
-    $per_page = 2; // CHANGE THIS VALUE TO UPDATE PAGE SIZE EVERYWHERE
+    $per_page = 2;
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
     $albums = $wpdb->get_results("SELECT * FROM adamson_archive_albums $searchSql ORDER BY $sort $order LIMIT $per_page OFFSET $offset");
     $total_albums = $wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums $searchSql");
@@ -243,7 +243,9 @@ function adamson_archive_admin_page() {
             $.post(ajaxurl, {action: 'adamson_archive_scan_progress'}, function(resp) {
                 if (resp.success && resp.data && resp.data.progress) {
                     var msgs = resp.data.progress;
-                    var html = '<div style="margin:20px 0;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;">';
+                    var html = '<div style="margin:20px 0;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;position:relative;">';
+                    // Add close button if not already present
+                    html += '<button class="progress-close-btn" style="position:absolute;top:6px;right:9px;z-index:10;font-size:16px;line-height:16px;width:24px;height:24px;border:none;background:transparent;cursor:pointer;" aria-label="Close">&#10005;</button>';
                     html += '<strong style="display:block;margin-bottom:10px;text-align:center;">Sync & Process Progress:</strong>';
                     html += '<ul id="adamson-archive-progress-list" style="margin:0 0 0 20px;max-height:168px;overflow-y:auto;">';
                     for (var i = 0; i < msgs.length; i++) {
@@ -251,23 +253,29 @@ function adamson_archive_admin_page() {
                     }
                     html += '</ul></div>';
                     $('#adamson-archive-progress').html(html);
+                    // Attach close handler
+                    $('#adamson-archive-progress .progress-close-btn').off('click').on('click', function() {
+                        $('#adamson-archive-progress').empty();
+                    });
                     var $list = $('#adamson-archive-progress-list');
                     if ($list.length) {
                         $list.scrollTop($list[0].scrollHeight);
                     }
-                    // If last message is a finish message, stop polling and reload table
-                    if (msgs.length && (
-                        msgs[msgs.length-1].indexOf('processed and indexed') !== -1 ||
-                        msgs[msgs.length-1].indexOf('up to date') !== -1 ||
-                        msgs[msgs.length-1].indexOf('SCAN COMPLETE!') !== -1
-                    )) {
-                        clearInterval(progressInterval);
-                        progressInterval = null;
-                        $('.wp-list-table tbody').empty();
-                        offset = 0;
-                        fetchAlbums({append: false});
-                        // Optionally, clear progress after a short delay
-                        setTimeout(function() { $('#adamson-archive-progress').empty(); }, 10000);
+                    // Only reload table after SCAN COMPLETE! and confirm it persists for two polls
+                    if (msgs.length && msgs[msgs.length-1].indexOf('SCAN COMPLETE!') !== -1) {
+                        if (window._adamson_scan_complete_seen) {
+                            clearInterval(progressInterval);
+                            progressInterval = null;
+                            $('.wp-list-table tbody').empty();
+                            offset = 0;
+                            window.offset = 0;
+                            fetchAlbums({append: false});
+                            // Do NOT auto-clear progress, keep open for manual close
+                        } else {
+                            window._adamson_scan_complete_seen = true;
+                        }
+                    } else {
+                        window._adamson_scan_complete_seen = false;
                     }
                 }
             });

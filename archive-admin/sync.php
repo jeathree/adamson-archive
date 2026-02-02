@@ -2,9 +2,7 @@
 
     require_once __DIR__ . '/progress.php';
 
-/**
- * List all uploaded YouTube videos (returns array of titles and IDs)
- */
+// List all uploaded YouTube videos (returns array of titles and IDs)
 function adamson_youtube_list_uploaded_videos($access_token) {
     $videos = [];
     $pageToken = '';
@@ -31,9 +29,7 @@ function adamson_youtube_list_uploaded_videos($access_token) {
     return $videos;
 }
 
-/**
- * Adamson Archive Sync & Process Logic
- */
+// Adamson Archive Sync & Process Logic
 
 function adamson_archive_sync_and_process() {
     $uploads_dir = WP_CONTENT_DIR . '/uploads/albums/';
@@ -45,13 +41,16 @@ function adamson_archive_sync_and_process() {
     }
 
     $album_folders = array_filter(glob($uploads_dir . '*'), 'is_dir');
+    error_log('SYNC: Found ' . count($album_folders) . ' album folders.');
     global $wpdb;
 
     $any_processed = false;
+    $processed_count = 0;
     foreach ($album_folders as $album_path) {
         $album_folder = basename($album_path);
         $config_path = $album_path . '/config.json';
         adamson_archive_add_progress("Processing album: $album_folder");
+        error_log('SYNC: Processing album folder: ' . $album_folder);
 
         // Load or create config.json
         if (file_exists($config_path)) {
@@ -123,13 +122,25 @@ function adamson_archive_sync_and_process() {
             ];
         }
 
-        // Collect video files for YouTube upload
+        // Collect video files for YouTube upload and collect all media for DB
         $video_files = [];
+        $album_media_rows = [];
         foreach ($media as $item) {
             $file = $item['file'];
             $ext = $item['ext'];
             if (in_array($ext, ['mp4', 'mov', 'avi', 'mkv', 'webm'])) {
                 $video_files[] = $file;
+                // Video row will be added below with YouTube info
+            } else {
+                // Add image or other media to DB rows
+                $album_media_rows[] = [
+                    'album_id' => 0, // Set below after album insert
+                    'filename' => $file,
+                    'type' => $ext,
+                    'youtube_id' => null,
+                    'created_at' => current_time('mysql'),
+                    'updated_at' => current_time('mysql')
+                ];
             }
         }
         // YouTube: create playlist if there are videos
@@ -224,8 +235,11 @@ function adamson_archive_sync_and_process() {
 
         // Mark album as processed in DB
         $wpdb->update('adamson_archive_albums', ['processed' => 1], ['id' => $album_id]);
+        $processed_count++;
+        error_log('SYNC: Album processed and indexed: ' . $album_folder);
         adamson_archive_add_progress("$album_folder processed and indexed.");
     }
+    error_log('SYNC: Total albums processed this run: ' . $processed_count);
     if (!$any_processed) {
         adamson_archive_add_progress('No new or updated albums found. Everything is up to date.');
     }
@@ -239,9 +253,7 @@ function adamson_archive_sync_and_process() {
     return true;
 }
 
-/**
- * Upload a video to YouTube and return the video ID
- */
+// Upload a video to YouTube and return the video ID
 function adamson_youtube_upload_video($file_path, $title, $access_token, $privacy = 'unlisted', $description = '') {
     $endpoint = 'https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=resumable';
     $metadata = [
@@ -285,9 +297,7 @@ function adamson_youtube_upload_video($file_path, $title, $access_token, $privac
     return ['error' => isset($body['error']['message']) ? $body['error']['message'] : 'Unknown upload error.'];
 }
 
-/**
- * Create a YouTube playlist and return the playlist ID
- */
+// Create a YouTube playlist and return the playlist ID
 function adamson_youtube_create_playlist($title, $access_token, $privacy = 'unlisted', $description = '') {
     $endpoint = 'https://www.googleapis.com/youtube/v3/playlists?part=snippet,status';
     $data = [
@@ -312,9 +322,7 @@ function adamson_youtube_create_playlist($title, $access_token, $privacy = 'unli
     return $body['id'] ?? false;
 }
 
-/**
- * Add a video to a YouTube playlist
- */
+// Add a video to a YouTube playlist
 function adamson_youtube_add_video_to_playlist($video_id, $playlist_id, $access_token) {
     $endpoint = 'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet';
     $data = [
@@ -339,9 +347,7 @@ function adamson_youtube_add_video_to_playlist($video_id, $playlist_id, $access_
     return !empty($body['id']);
 }
 
-/**
- * Find a YouTube playlist by title and return its ID
- */
+// Find a YouTube playlist by title and return its ID
 function adamson_youtube_find_playlist($title, $access_token) {
     $endpoint = 'https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50';
     $headers = [
