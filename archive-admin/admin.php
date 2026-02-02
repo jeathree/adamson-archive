@@ -18,6 +18,7 @@ add_action('admin_menu', 'adamson_archive_admin_menu');
 
 function adamson_archive_admin_page() {
     echo '<div class="wrap"><h1>The Adamson Archive</h1>';
+    echo '<div id="adamson-archive-progress"></div>';
 
 
     // Scan & Process Albums button
@@ -232,8 +233,24 @@ function adamson_archive_admin_page() {
             var form = $(this);
             var btn = form.find('button[type="submit"]');
             btn.prop('disabled', true).text('Processing...');
-            $.post(window.location.href, form.serialize(), function(data) {
+            $.post(ajaxurl, {
+                action: 'adamson_archive_scan',
+            }, function(data) {
                 btn.prop('disabled', false).text('Scan & Process Albums');
+                var nothingNewMsg = 'No new or updated albums found. Everything is up to date.';
+                // Show progress HTML above the table
+                var $progress = $('#adamson-archive-progress');
+                $progress.html(data);
+                // If nothing new, show inline notification (WordPress style)
+                if (typeof data === 'string' && data.indexOf(nothingNewMsg) !== -1) {
+                    var notice = '<div class="notice notice-warning is-dismissible"><p>' + nothingNewMsg + '</p></div>';
+                    $progress.prepend(notice);
+                }
+                // Auto-scroll progress list to bottom
+                var $list = $('#adamson-archive-progress-list');
+                if ($list.length) {
+                    $list.scrollTop($list[0].scrollHeight);
+                }
                 // Clear table and reload first page via AJAX
                 $('.wp-list-table tbody').empty();
                 offset = 0;
@@ -245,10 +262,11 @@ function adamson_archive_admin_page() {
     </script>
     <style>#adamson-archive-load-more{margin-top:10px;}</style>
 <?php
-    if (isset($_POST['adamson_archive_scan'])) {
+    // Only output progress if not AJAX (AJAX handled above)
+    if (isset($_POST['adamson_archive_scan']) && empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
         $progress = adamson_archive_sync_and_process();
-        echo '<div style="margin-top:20px;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;">';
-        echo '<strong>Sync & Process Progress:</strong><ul style="margin:0 0 0 20px;">';
+        echo '<div style="margin:20px 0;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;">';
+        echo '<strong style="display:block;margin-bottom:10px;text-align:center;">Sync & Process Progress:</strong><ul style="margin:0 0 0 20px;">';
         foreach ($progress as $msg) {
             echo '<li>' . esc_html($msg) . '</li>';
         }

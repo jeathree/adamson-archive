@@ -14,6 +14,7 @@ function adamson_archive_sync_and_process() {
     $album_folders = array_filter(glob($uploads_dir . '*'), 'is_dir');
     global $wpdb;
 
+    $any_processed = false;
     foreach ($album_folders as $album_path) {
         $album_folder = basename($album_path);
         $config_path = $album_path . '/config.json';
@@ -76,6 +77,7 @@ function adamson_archive_sync_and_process() {
             $progress[] = "$album_folder already processed, skipping.";
             continue;
         }
+        $any_processed = true;
 
         // Scan for media files
         $media_files = array_diff(scandir($album_path), ['.', '..', 'config.json']);
@@ -156,6 +158,9 @@ function adamson_archive_sync_and_process() {
         // Mark album as processed in DB
         $wpdb->update('adamson_archive_albums', ['processed' => 1], ['id' => $album_id]);
         $progress[] = "$album_folder processed and indexed.";
+    }
+    if (!$any_processed) {
+        $progress[] = 'No new or updated albums found. Everything is up to date.';
     }
     return $progress;
 }

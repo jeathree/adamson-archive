@@ -1,4 +1,17 @@
 <?php
+// AJAX handler for scan & process
+add_action('wp_ajax_adamson_archive_scan', function() {
+    require_once(__DIR__ . '/sync.php');
+    $progress = adamson_archive_sync_and_process();
+    echo '<div style="margin:20px 0;padding:10px;border:1px solid #ccc;background:#fafafa;max-width:600px;">';
+    echo '<strong style="display:block;margin-bottom:10px;text-align:center;">Sync & Process Progress:</strong>';
+    echo '<ul id="adamson-archive-progress-list" style="margin:0 0 0 20px;max-height:168px;overflow-y:auto;">';
+    foreach ($progress as $msg) {
+        echo '<li>' . esc_html($msg) . '</li>';
+    }
+    echo '</ul></div>';
+    wp_die();
+});
 // AJAX handler for admin album search
 add_action('wp_ajax_adamson_archive_search_albums', function() {
     global $wpdb;
