@@ -36,31 +36,32 @@ function adamson_archive_admin_page() {
     $processed = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums WHERE processed = 1");
     $failed = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums WHERE processed = 0 AND id IN (SELECT album_id FROM adamson_archive_media WHERE type IN ('mp4','mov','avi','mkv','webm') AND (youtube_id IS NULL OR youtube_id = ''))");
     $pending = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums WHERE processed = 0 AND id NOT IN (SELECT album_id FROM adamson_archive_media WHERE type IN ('mp4','mov','avi','mkv','webm') AND (youtube_id IS NULL OR youtube_id = ''))");
+    $images = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_media WHERE type IN ('jpg','jpeg','png','gif','bmp')");
+    $videos = (int)$wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_media WHERE type IN ('mp4','mov','avi','mkv','webm') AND youtube_id IS NOT NULL AND youtube_id != ''");
     echo '<div id="adamson-archive-summary">';
-    echo '<strong>Album Summary:</strong>';
-    $help_icon = function($tip) {
-        return '<span class="adamson-help-icon" title="' . htmlspecialchars($tip) . '">&#9432;</span>';
-    };
-    echo '<span class="adamson-summary-total">Total: <b>' . $total . '</b>' . $help_icon('All albums in the archive, regardless of status.') . '</span>';
-    echo '<span class="adamson-summary-processed">Processed: <b>' . $processed . '</b>' . $help_icon('Albums where all YouTube uploads and playlist actions succeeded (fully complete).') . '</span>';
-    echo '<span class="adamson-summary-failed">Failed: <b>' . $failed . '</b>' . $help_icon('Albums that have at least one video or playlist that failed to upload to YouTube. These albums are not fully processed and will be retried.') . '</span>';
-    echo '<span class="adamson-summary-pending">Pending: <b>' . $pending . '</b>' . $help_icon('Albums that are not yet processed and have no failed YouTube uploads—typically new albums waiting to be processed, or albums with only non-video media.') . '</span>';
+    echo '<strong>Media Overview:</strong>';
+        echo '<span class="adamson-summary-total adamson-summary-tooltip" data-tip="Total number of albums in the archive.">Albums: <b>' . $total . '</b></span>';
+        echo '<span class="adamson-summary-processed adamson-summary-tooltip" data-tip="Albums where all YouTube uploads and playlist actions succeeded (fully complete).">Processed: <b>' . $processed . '</b></span>';
+        echo '<span class="adamson-summary-failed adamson-summary-tooltip" data-tip="Albums that have at least one video or playlist that failed to upload to YouTube. These albums are not fully processed and will be retried.">Failed: <b>' . $failed . '</b></span>';
+        echo '<span class="adamson-summary-pending adamson-summary-tooltip" data-tip="Albums that are not yet processed and have no failed YouTube uploads—typically new albums waiting to be processed, or albums with only non-video media.">Pending: <b>' . $pending . '</b></span>';
+        echo '<span class="adamson-summary-images adamson-summary-tooltip" data-tip="Total number of images in the archive (jpg, jpeg, png, gif, bmp).">Images: <b>' . $images . '</b></span>';
+        echo '<span class="adamson-summary-videos adamson-summary-tooltip" data-tip="Total number of videos in the archive (mp4, mov, avi, mkv, webm) with a YouTube ID.">Videos: <b>' . $videos . '</b></span>';
     echo '</div>';
 ?>
 <script>
 jQuery(document).ready(function($) {
-    // Tooltip for help icons
-    $(document).on('mouseenter', '.adamson-help-icon', function() {
-        var tip = $(this).attr('title');
+    // Tooltip for album summary (on label/value hover)
+    $(document).on('mouseenter', '.adamson-summary-tooltip', function() {
+        var tip = $(this).data('tip');
         var $tip = $('<div class="adamson-tooltip"></div>').text(tip);
         $('body').append($tip);
         var offset = $(this).offset();
         $tip.css({
             top: offset.top - $tip.outerHeight() - 8,
-            left: offset.left - ($tip.outerWidth()/2) + 10
+            left: offset.left - ($tip.outerWidth()/2) + $(this).outerWidth()/2
         });
         $(this).data('adamson-tip', $tip);
-    }).on('mouseleave', '.adamson-help-icon', function() {
+    }).on('mouseleave', '.adamson-summary-tooltip', function() {
         var $tip = $(this).data('adamson-tip');
         if ($tip) $tip.remove();
     });
@@ -91,7 +92,7 @@ jQuery(document).ready(function($) {
     $searchSql = $search ? $wpdb->prepare("WHERE name LIKE %s OR year LIKE %s", "%$search%", "%$search%") : '';
 
     // Handle pagination (load more)
-    $per_page = 2;
+    $per_page = 5;
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
     $albums = $wpdb->get_results("SELECT * FROM adamson_archive_albums $searchSql ORDER BY $sort $order LIMIT $per_page OFFSET $offset");
     $total_albums = $wpdb->get_var("SELECT COUNT(*) FROM adamson_archive_albums $searchSql");
@@ -116,6 +117,7 @@ jQuery(document).ready(function($) {
         'processed' => 'Processed',
         'images' => 'Images',
         'videos' => 'Videos',
+        'view_media' => 'View Media',
         'actions' => 'Actions'
     ];
     foreach ($columns as $col => $label) {
@@ -142,6 +144,7 @@ jQuery(document).ready(function($) {
         var lastSearch = '';
         var lastSort = $('#adamson-archive-search-form input[name="sort"]').val() || 'date_created';
         var lastOrder = $('#adamson-archive-search-form input[name="order"]').val() || 'DESC';
+        var lastRowCount = per_page; // Track how many rows are currently shown
         function updateSortArrows(sort, order) {
             var arrowUp = '\u25B2';
             var arrowDown = '\u25BC';
@@ -158,16 +161,18 @@ jQuery(document).ready(function($) {
 
         function renderRows(rows, append) {
             var tbody = '';
-            rows.forEach(function(row) {
-                var arrow = '<span class="adamson-album-arrow" data-album-id="' + row.id + '" style="cursor:pointer;">&#9654;</span> ';
-                tbody += '<tr class="adamson-album-row" data-album-id="' + row.id + '">' +
+            rows.forEach(function(row, i) {
+                var evenClass = (i % 2 === 1) ? ' even' : '';
+                var arrow = '<span class="adamson-album-view-link" data-album-id="' + row.id + '" style="cursor:pointer;">View <span class="adamson-album-arrow">&#9654;</span></span>';
+                tbody += '<tr class="adamson-album-row' + evenClass + '" data-album-id="' + row.id + '">' +
                     '<td>' + (row.date_created || '') + '</td>' +
-                    '<td>' + arrow + row.name + '</td>' +
+                    '<td>' + row.name + '</td>' +
                     '<td>' + (row.year || '') + '</td>' +
                     '<td>' + row.visible + '</td>' +
                     '<td>' + row.processed + '</td>' +
                     '<td>' + row.images + '</td>' +
                     '<td>' + row.videos + '</td>' +
+                    '<td>' + arrow + '</td>' +
                     '<td>' +
                         '<form method="post" class="adamson-inline-form">' +
                         '<input type="hidden" name="adamson_archive_reprocess_album" value="' + row.id + '">' +
@@ -175,13 +180,13 @@ jQuery(document).ready(function($) {
                         '</form>' +
                     '</td>' +
                 '</tr>';
-                // Add a hidden row for media details
-                tbody += '<tr class="adamson-album-media-row" data-album-id="' + row.id + '" style="display:none;"><td colspan="8"><div class="adamson-album-media-list"></div></td></tr>';
+                // Add a hidden row for media details (expandable)
+                tbody += '<tr class="adamson-album-media-row" data-album-id="' + row.id + '" style="display:none;"><td colspan="9"><div class="adamson-album-media-list"></div></td></tr>';
             });
                     // Album arrow click handler: slide down and load media via AJAX
-                    $(document).on('click', '.adamson-album-arrow', function() {
+                    $(document).off('click', '.adamson-album-view-link').on('click', '.adamson-album-view-link', function() {
                         var albumId = $(this).data('album-id');
-                        var $arrow = $(this);
+                        var $arrow = $(this).find('.adamson-album-arrow');
                         var $mediaRow = $('.adamson-album-media-row[data-album-id="' + albumId + '"]');
                         var $mediaList = $mediaRow.find('.adamson-album-media-list');
                         if ($mediaRow.is(':visible')) {
@@ -198,7 +203,7 @@ jQuery(document).ready(function($) {
                         $mediaList.html('<em>Loading...</em>');
                         $.post(ajaxurl, {action: 'adamson_archive_album_media', album_id: albumId}, function(resp) {
                             if (resp.success && resp.data && resp.data.media) {
-                                var html = '<ul class="adamson-media-list">';
+                                var html = '<ul class="adamson-media-list-grid">';
                                 resp.data.media.forEach(function(m) {
                                     var failClass = m.failed ? 'adamson-media-failed' : '';
                                     html += '<li class="' + failClass + '">' + m.filename + (m.failed ? ' <span class="adamson-fail-label">(Failed)</span>' : '') + '</li>';
@@ -229,19 +234,27 @@ jQuery(document).ready(function($) {
             var sort = form.find('input[name="sort"]').val();
             var order = form.find('input[name="order"]').val();
             var fetchOffset = opts.append ? offset : 0;
+            var rowCount = opts.rowCount || (opts.append ? per_page : per_page);
+            // If rowCount is set (from sort), fetch that many rows
             $.post(ajaxurl, {
                 action: 'adamson_archive_search_albums',
                 search: search,
                 sort: sort,
                 order: order,
-                offset: fetchOffset
+                offset: fetchOffset,
+                row_count: rowCount
             }, function(response) {
                 if (opts.append) {
                     renderRows(response.rows, true);
                     offset += response.rows.length;
                 } else {
                     renderRows(response.rows, false);
-                    offset = response.rows.length;
+                    // If rowCount was set (from sort), set offset to that, else to response.rows.length
+                    if (opts.rowCount) {
+                        offset = opts.rowCount;
+                    } else {
+                        offset = response.rows.length;
+                    }
                 }
                 // Show/hide Load More
                 if (offset < response.total) {
@@ -291,8 +304,11 @@ jQuery(document).ready(function($) {
             }
             $('#adamson-archive-search-form input[name="sort"]').val(sort);
             $('#adamson-archive-search-form input[name="order"]').val(order);
-            offset = 0; // Reset offset on sort change
-            fetchAlbums({append: false});
+            // Instead of resetting to per_page, preserve the number of rows currently shown
+            var rowsShown = offset > 0 ? offset : per_page;
+            offset = 0;
+            lastRowCount = rowsShown;
+            fetchAlbums({append: false, rowCount: rowsShown});
         });
         // Initial state: load first page via AJAX
         fetchAlbums({append: false});

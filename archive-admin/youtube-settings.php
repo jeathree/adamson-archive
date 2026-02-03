@@ -71,6 +71,9 @@ function adamson_archive_youtube_settings_page() {
             $status_rows[] = '<tr><th>Refresh Token</th><td>' . ($refresh_token ? $check : $cross) . '</td></tr>';
             echo '<h2>YouTube Auth Status</h2>';
             echo '<table class="form-table" style="max-width:400px;">' . implode('', $status_rows) . '</table>';
+
+    // --- YouTube Quota Status ---
+    echo '<div class="notice notice-info"><p>YouTube API quota usage and limits are only available in the <a href="https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas?authuser=1&project=the-adamson-archive-upload" target="_blank" rel="noopener">Google Cloud Console</a> for your project.</p></div>';
     ?>
     <div class="wrap">
         <h1>YouTube Integration Settings</h1>

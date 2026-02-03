@@ -16,24 +16,7 @@
 
 
 
-/* Adamson Archive Summary Dashboard Item Colors */
 
-.adamson-summary-total {
-	color: #333;
-	position: relative;
-}
-.adamson-summary-processed {
-	color: #27ae60;
-	position: relative;
-}
-.adamson-summary-failed {
-	color: #c0392b;
-	position: relative;
-}
-.adamson-summary-pending {
-	color: #f39c12;
-	position: relative;
-}
 
 
 
@@ -68,24 +51,37 @@
 	align-items: center;
 	background: #f8f8fa;
 	border: 1px solid #ccc;
+	box-sizing: border-box;
 	display: flex;
 	font-size: 16px;
 	gap: 32px;
+	justify-content: space-between;
 	margin: 20px 0 30px 0;
-	max-width: 700px;
+	max-width: 1200px;
 	padding: 16px 24px;
 }
 
+	#adamson-archive-summary span {
+		text-decoration: underline;
+	}
 
-.adamson-help-icon {
-	border-radius: 50%;
-	color: #888;
-	cursor: pointer;
-}
-.adamson-help-icon:hover {
-	background: #e0e0e0;
-	color: #222;
-}
+	.adamson-summary-total {
+		color: #333;
+		position: relative;
+	}
+	.adamson-summary-processed {
+		color: #27ae60;
+		position: relative;
+	}
+	.adamson-summary-failed {
+		color: #c0392b;
+		position: relative;
+	}
+	.adamson-summary-pending {
+		color: #f39c12;
+		position: relative;
+	}
+
 
 /* Album Table Sort Arrows */
 .adamson-archive-arrow {
@@ -102,6 +98,30 @@
 }
 .adamson-archive-arrow-active {
 	color: #888 !important;
+}
+
+/* Show album arrow for expandable rows */
+.adamson-album-arrow {
+	display: inline-block;
+	margin-top: 0;
+	margin-right: 6px;
+	font-size: 15px;
+	color: #888;
+	cursor: pointer;
+	vertical-align: middle;
+	transition: color 0.2s;
+}
+.adamson-album-arrow:hover {
+	color: #222;
+}
+
+/* Underline 'View' in the View Media column */
+.adamson-album-view-link {
+	text-decoration: underline;
+	cursor: pointer;
+	color: #0073aa;
+	font-weight: 500;
+	margin-right: 4px;
 }
 
 
@@ -163,28 +183,83 @@
 
 /* Album table: arrow, slide-down, and failed media */
 .adamson-album-arrow {
-	display: none;
-	margin-top: 10px;
+	display: inline-block;
+	margin-top: 0;
+	margin-right: 6px;
+	font-size: 15px;
+	color: #888;
+	cursor: pointer;
+	vertical-align: middle;
+	transition: color 0.2s;
+}
+.adamson-album-arrow:hover {
+	color: #222;
 }
 
 .wp-list-table {
-	max-width: 1000px;
+	border-collapse: collapse;
+	max-width: 1200px;
 }
 
-.adamson-album-arrow:hover {}
+	/* Album table row border and pinstriping */
+	.wp-list-table tbody tr.adamson-album-row td {
+		border-bottom: 1px solid #e5e5e5;
+		border-top: 1px solid #e5e5e5;
+		background: #fff;
+		transition: background 0.2s;
+	}
+	.wp-list-table tbody tr.adamson-album-row.even td {
+		background: #fafbfc;
+	}
+	.wp-list-table tbody tr:last-child td {
+		border-bottom: none;
+	}
 
-h2.adamson-archive-albums-title {}
+		h2.adamson-archive-albums-title {
+			margin: 50px 0 20px;
+		}
 
 .adamson-album-media-row {
 	margin-top: 30px;
 }
 
-.adamson-media-list {}
+/* Add border-top to the first cell of the expanded media row to match the border-bottom of album rows */
+.adamson-album-media-row td {
+    border-top: 1px solid #e5e5e5;
+    background: #f9f9fa;
+    padding: 10px 8px;
+}
 
+/* Media list grid for expandable album media */
+.adamson-media-list-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 6px 18px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	max-height: 320px;
+	overflow-y: auto;
+}
+.adamson-media-list-grid li {
+	padding: 4px 0 4px 8px;
+	font-size: 15px;
+	background: #fff;
+	word-break: break-all;
+}
+.adamson-media-list-grid li:last-child {
+	border-bottom: none;
+}
+.adamson-media-failed {
+	color: #c0392b;
+	font-weight: 500;
+}
+.adamson-fail-label {
+	font-size: 12px;
+	color: #c0392b;
+	margin-left: 4px;
+}
 
-
-
-.adamson-media-list li {}
 /* YouTube Settings Page */
 
 .adamson-media-failed {}

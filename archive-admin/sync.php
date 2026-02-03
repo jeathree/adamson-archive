@@ -133,13 +133,16 @@ function adamson_archive_sync_and_process() {
         // Collect video files for YouTube upload and collect all media for DB
         $video_files = [];
         $album_media_rows = [];
+        // Accept more video and image extensions
+        $video_exts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'mts', 'm2ts', 'vob', 'm4v', 'ts', 'ogv', 'asf', 'rm', 'rmvb', 'f4v', 'mxf'];
+        $image_exts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'tif', 'webp', 'heic', 'svg'];
         foreach ($media as $item) {
             $file = $item['file'];
             $ext = $item['ext'];
-            if (in_array($ext, ['mp4', 'mov', 'avi', 'mkv', 'webm'])) {
-                $video_files[] = $file;
+            if (in_array($ext, $video_exts)) {
+                $video_files[] = ['file' => $file, 'ext' => $ext];
                 // Video row will be added below with YouTube info
-            } else {
+            } elseif (in_array($ext, $image_exts)) {
                 // Add image or other media to DB rows
                 $album_media_rows[] = [
                     'album_id' => 0, // Set below after album insert
@@ -171,7 +174,9 @@ function adamson_archive_sync_and_process() {
         $video_db_rows = [];
         $video_count = 1;
         $all_uploads_success = true;
-        foreach ($video_files as $file) {
+        foreach ($video_files as $video) {
+            $file = $video['file'];
+            $ext = $video['ext'];
             $video_title = $year . ' ' . $clean_name . ' Video' . $video_count;
             $file_path = $album_path . '/' . $file;
             $youtube_id = null;
