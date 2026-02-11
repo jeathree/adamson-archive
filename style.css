@@ -1,280 +1,294 @@
 /*
-    Theme Name: The Adamson Archive
-    Template: twentytwentyfive
+====================
+  Expand/Collapse Arrow
+====================
 */
-
-
-
-/* Inline forms for admin buttons */
-
-.adamson-inline-form {
-	display: inline-block;
-	margin-right: 10px;
+.expand-arrow {
+	width: 32px;
+	text-align: center;
+	cursor: pointer;
+}
+.expand-arrow .dashicons {
+	font-size: 1.2em;
 	vertical-align: middle;
 }
-
-
-
-
-
-
-
-
-
-/* Miscellaneous (error/success/info boxes) */
-
-.adamson-progress-box, .adamson-error-box, .adamson-success-box {
-	background: #fafafa;
-	border: 1px solid #ccc;
-	margin: 20px 0;
-	max-width: 600px;
-	padding: 10px;
-	position: relative;
+.adamson-album-media-row {
+	display: none;
 }
 
-	.adamson-error-box {
-		background: #fee;
-		border-color: #f00;
-	}
+/*
+====================
+  Layout Container
+====================
+*/
 
-	.adamson-success-box {
-		background: #eafaf1;
-		border-color: #27ae60;
-	}
+.wrap {
+	background: #fff;
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+	margin: 32px auto;
+	max-width: 1200px;
+	padding: 32px 40px 40px 40px;
+}
 
 
+/*
+====================
+  Page Title
+====================
+*/
+
+h1 {
+	color: #222;
+	font-size: 2.2rem;
+	font-weight: 700;
+	letter-spacing: -1px;
+	margin-bottom: 24px;
+}
 
 
-/* Summary Dashboard & Help Icon */
+/*
+====================
+  Summary Bar
+====================
+*/
 
 #adamson-archive-summary {
 	align-items: center;
-	background: #f8f8fa;
-	border: 1px solid #ccc;
-	box-sizing: border-box;
 	display: flex;
-	font-size: 16px;
-	gap: 32px;
-	justify-content: space-between;
-	margin: 20px 0 30px 0;
-	max-width: 1200px;
-	padding: 16px 24px;
+	flex-wrap: wrap;
+	gap: 18px;
+	margin-bottom: 28px;
 }
-
+	#adamson-archive-summary strong {
+		font-size: 1.1rem;
+		margin-right: 12px;
+	}
 	#adamson-archive-summary span {
-		text-decoration: underline;
-	}
-
-	.adamson-summary-total {
+		background: #f5f7fa;
+		border-radius: 4px;
 		color: #333;
+		font-size: 1rem;
+		margin-right: 8px;
+		padding: 6px 14px;
+	}
+	.adamson-summary-tooltip {
+		cursor: help;
 		position: relative;
 	}
-	.adamson-summary-processed {
-		color: #27ae60;
-		position: relative;
-	}
-	.adamson-summary-failed {
-		color: #c0392b;
-		position: relative;
-	}
-	.adamson-summary-pending {
-		color: #f39c12;
-		position: relative;
-	}
-
-
-/* Album Table Sort Arrows */
-.adamson-archive-arrow {
-	display: inline-block;
-	font-size: 13px;
-	margin-left: 4px;
-	color: #bbb;
-	vertical-align: middle;
-	transition: color 0.2s;
-}
-.adamson-archive-arrow-inactive {
-	color: #bbb !important;
-	cursor: pointer;
-}
-.adamson-archive-arrow-active {
-	color: #888 !important;
-}
-
-/* Show album arrow for expandable rows */
-.adamson-album-arrow {
-	display: inline-block;
-	margin-top: 0;
-	margin-right: 6px;
-	font-size: 15px;
-	color: #888;
-	cursor: pointer;
-	vertical-align: middle;
-	transition: color 0.2s;
-}
-.adamson-album-arrow:hover {
-	color: #222;
-}
-
-/* Underline 'View' in the View Media column */
-.adamson-album-view-link {
-	text-decoration: underline;
-	cursor: pointer;
-	color: #0073aa;
-	font-weight: 500;
-	margin-right: 4px;
-}
-
-
-
-
-/* Progress Bar/Box */
-
-#adamson-archive-progress {
-	position: relative;
-}
-
 	.adamson-tooltip {
 		background: #222;
-		border-radius: 6px;
-		box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+		border-radius: 4px;
 		color: #fff;
-		font-size: 13px;
-		max-width: 320px;
-		padding: 6px 12px;
+		font-size: 0.98rem;
+		left: 0;
+		padding: 8px 14px;
+		pointer-events: none;
 		position: absolute;
-		white-space: normal;
-		z-index: 9999;
+		top: 100%;
+		white-space: nowrap;
+		z-index: 1000;
 	}
 
-		.progress-close-btn {
-			background: transparent;
-			border: none;
-			cursor: pointer;
-			font-size: 16px;
-			height: 24px;
-			line-height: 16px;
-			position: absolute;
-			right: 9px;
-			top: 6px;
-			width: 24px;
-			z-index: 10;
-		}
 
-
-
-
-/* Album Table & Controls */
-
-#adamson-archive-scan-form,
-#adamson-archive-search-form {
-	display: inline-block;
-	vertical-align: middle;
-}
-
-#adamson-archive-scan-form {
-	margin-right: 10px;
-}
+/*
+====================
+  Search & Actions Bar
+====================
+*/
 
 #adamson-archive-search-form {
-	margin-bottom: 10px;
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-bottom: 18px;
 }
+	#adamson-archive-search-form input[type="text"] {
+		border: 1px solid #d1d5db;
+		border-radius: 4px;
+		font-size: 1rem;
+		padding: 7px 12px;
+		width: 220px;
+	}
+	#adamson-archive-search-form .button {
+		font-size: 1rem;
+		padding: 7px 18px;
+		border-radius: 4px;
+		border: none;
+		cursor: pointer;
+		transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+	}
+	#adamson-archive-search-form .button-primary {
+		background: #1976d2;
+		color: #fff;
+	}
+	#adamson-archive-search-form .button-primary:hover {
+		background: #125ea2;
+	}
+	#adamson-archive-search-form .button-danger {
+		background: #e74c3c;
+		color: #fff;
+	}
+	#adamson-archive-search-form .button-danger:hover {
+		background: #ffeaea;
+		color: #c0392b;
+	}
+	#adamson-archive-search-form .dashicons {
+		font-size: 1.1em;
+		vertical-align: middle;
+		margin-right: 4px;
+	}
 
-#adamson-archive-load-more {}
 
-/* Album table: arrow, slide-down, and failed media */
-.adamson-album-arrow {
-	display: inline-block;
-	margin-top: 0;
-	margin-right: 6px;
-	font-size: 15px;
-	color: #888;
-	cursor: pointer;
-	vertical-align: middle;
-	transition: color 0.2s;
+/*
+====================
+  Table Container & Loading
+====================
+*/
+
+#adamson-archive-table-container {
+	min-height: 220px;
+	position: relative;
 }
-.adamson-album-arrow:hover {
-	color: #222;
-}
+	#adamson-archive-table-loading {
+		align-items: center;
+		background: rgba(255,255,255,0.7);
+		display: none;
+		height: 100%;
+		justify-content: center;
+		left: 0;
+		min-height: 220px;
+		position: absolute;
+		top: 0;
+		width: 100%;
+		z-index: 10;
+	}
+	#adamson-archive-table-loading .dashicons {
+		color: #1976d2;
+		font-size: 2.2rem;
+	}
+
+
+/*
+====================
+  Albums Table
+====================
+*/
 
 .wp-list-table {
+	background: #fff;
 	border-collapse: collapse;
-	max-width: 1200px;
+	border-radius: 6px;
+	box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+	font-size: 1rem;
+	margin-bottom: 18px;
+	width: 100%;
 }
-
-	/* Album table row border and pinstriping */
-	.wp-list-table tbody tr.adamson-album-row td {
-		border-bottom: 1px solid #e5e5e5;
-		border-top: 1px solid #e5e5e5;
-		background: #fff;
-		transition: background 0.2s;
+	.wp-list-table th, .wp-list-table td {
+		border-bottom: 1px solid #ececec;
+		padding: 12px 10px;
+		text-align: left;
 	}
-	.wp-list-table tbody tr.adamson-album-row.even td {
-		background: #fafbfc;
+	.wp-list-table th {
+		background: #f5f7fa;
+		color: #222;
+		font-weight: 600;
+		letter-spacing: 0.01em;
 	}
-	.wp-list-table tbody tr:last-child td {
+	.wp-list-table tr:last-child td {
 		border-bottom: none;
 	}
-
-		h2.adamson-archive-albums-title {
-			margin: 50px 0 20px;
-		}
-
-.adamson-album-media-row {
-	margin-top: 30px;
-}
-
-/* Add border-top to the first cell of the expanded media row to match the border-bottom of album rows */
-.adamson-album-media-row td {
-    border-top: 1px solid #e5e5e5;
-    background: #f9f9fa;
-    padding: 10px 8px;
-}
-
-/* Media list grid for expandable album media */
-.adamson-media-list-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-	gap: 6px 18px;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	max-height: 320px;
-	overflow-y: auto;
-}
-.adamson-media-list-grid li {
-	padding: 4px 0 4px 8px;
-	font-size: 15px;
-	background: #fff;
-	word-break: break-all;
-}
-.adamson-media-list-grid li:last-child {
-	border-bottom: none;
-}
-.adamson-media-failed {
-	color: #c0392b;
-	font-weight: 500;
-}
-.adamson-fail-label {
-	font-size: 12px;
-	color: #c0392b;
-	margin-left: 4px;
-}
-
-/* YouTube Settings Page */
-
-.adamson-media-failed {}
-.adamson-youtube-status-table {
-	max-width: 400px;
-}
-.adamson-fail-label {}
-
-	.adamson-youtube-auth-btn {
-		margin-left: 10px;
-		vertical-align: middle;
+	.wp-list-table tbody tr:hover {
+		background: #f0f6ff;
+	}
+	.adamson-archive-albums-title {
+		font-size: 1.3rem;
+		font-weight: 600;
+		margin: 24px 0 12px 0;
 	}
 
-	.adamson-youtube-flex-row {
-		align-items: center;
-		display: flex;
-		gap: 10px;
+
+/*
+====================
+  Buttons (Global)
+====================
+*/
+
+.button {
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 1rem;
+	padding: 7px 18px;
+	transition: background 0.18s, color 0.18s, box-shadow 0.18s;
 }
+	.button:active {
+		box-shadow: 0 2px 8px rgba(25,118,210,0.08);
+	}
+
+
+/*
+====================
+  Album/Queue/Media States
+====================
+*/
+
+.adamson-queue-error {
+	color: #e74c3c;
+	font-size: 0.97em;
+	font-style: italic;
+}
+	.adamson-album-view-link {
+		color: #1976d2;
+		cursor: pointer;
+		font-weight: 500;
+		text-decoration: underline;
+	}
+	.adamson-album-arrow {
+		font-size: 1.1em;
+		margin-left: 2px;
+	}
+	.adamson-album-media-row {
+		background: #f9fbfd;
+	}
+
+
+/*
+====================
+  Media List Grid
+====================
+*/
+
+.adamson-media-list-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+	.adamson-media-list-grid li {
+		align-items: center;
+		background: #f5f7fa;
+		border-radius: 4px;
+		color: #333;
+		display: flex;
+		font-size: 1rem;
+		gap: 8px;
+		padding: 8px 14px;
+	}
+	.adamson-media-failed {
+		background: #ffeaea;
+		color: #c0392b;
+	}
+	.adamson-fail-label {
+		color: #e74c3c;
+		font-size: 0.95em;
+		font-style: italic;
+		margin-left: 6px;
+	}
+	.adamson-inline-form {
+		display: inline-block;
+		margin-right: 8px;
+	}

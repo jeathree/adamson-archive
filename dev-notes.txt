@@ -1,2 +1,0 @@
-- Reset load more value from 2 to twenty, make sure this changes everywhere (php and js)
-- Turn back on deleting videos and matching images if that was off
