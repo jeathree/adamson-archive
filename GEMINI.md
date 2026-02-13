@@ -27,9 +27,11 @@ We will use three primary custom tables. Gemini should suggest and add columns (
 
 ### 3. External API: YouTube Integration
 * **Logic:** Check for an existing `yt_playlist_id` for the album; create it if missing. Upload videos to that playlist and record the `yt_video_id` back to the media table.
+* **Authentication:** Implement a one-time OAuth 2.0 flow via a "Connect to YouTube" button on the admin dashboard. Securely store the resulting access/refresh tokens in the `wp_options` table. Display the current connection status to the admin.
 
 ### 4. Admin UI & Frontend Behavior
 * **Dashboard:** Custom WP Admin page with a "Scan" button and a real-time progress bar.
+* **Scan UX:** When the "Scan" button is clicked, it should be disabled to prevent multiple submissions. The Activity Log table should update via AJAX polling to show near real-time status messages (e.g., "Scanning folder X...", "Queuing video Y...").
 * **Album List:** Lazy-loaded list (10 items) with "Load More" AJAX pagination.
 * **Interaction:** Accordion-style rows that fetch and display media via AJAX only when expanded.
 
@@ -38,14 +40,16 @@ We will use three primary custom tables. Gemini should suggest and add columns (
 - **Location:** `/wp-content/themes/theadamsonarchive/`
 
 ## PHP & Backend Rules
-- **Includes & Requires:** All php includes and requires should go at the top of the file 
-- **Batching:** Use iterative processing or Action Scheduler for all heavy filesystem/API tasks.
+- **Includes & Requires:** All php includes and requires should go at the top of the file.
+- **File Organization:** All AJAX action handlers should be grouped in `inc/ajax-handler.php` to centralize AJAX logic.
+- **Batching:** Use Action Scheduler for all heavy filesystem/API tasks.
 - **Security:** Strict use of `$wpdb->prepare()` and `check_admin_referer()`.
 - **YouTube API:** Use official Google Client Library. Assume credentials are in `wp-config.php`.
 
 ## JavaScript & jQuery Rules
-- **Syntax:** Always use the `$` alias.
+- **Syntax:** Always use the ` alias.
 - **Implementation:** Always wrap in `jQuery(document).ready(function($) { ... });`.
+- **File Organization:** All admin-facing JavaScript will be located in `admin/js/dashboard.js` and properly enqueued.
 
 ## CSS Formatting & Structure (Strict)
 - **Hierarchy:** Indent selectors with one **Tab** per level of nesting to mirror HTML structure.
