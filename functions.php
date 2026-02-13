@@ -1,37 +1,49 @@
 <?php
+/**
+ * The Adamson Archive Theme Functions
+ *
+ * @package TheAdamsonArchive
+ */
 
-    // Admin UI
-    function adamson_archive_admin_page() {
-        require_once get_stylesheet_directory() . '/admin-ui.php';
-    }
+if ( ! defined( 'ABSPATH' ) ) {
+	exit; // Exit if accessed directly.
+}
 
-    // Frontend Styles
-    function child_enqueue_styles() {
-        wp_enqueue_style('child-theme', get_stylesheet_directory_uri() . '/style.css', array(), 100);
-    }
-    add_action('wp_enqueue_scripts', 'child_enqueue_styles', 999);
+// Include core files.
+require_once __DIR__ . '/admin/dashboard-page.php';
 
-    // Admin Styles
-    add_action('admin_enqueue_scripts', function($hook) {
-        if ($hook === 'toplevel_page_adamson-archive') {
-            wp_enqueue_style(
-                'child-theme-admin-styles',
-                get_stylesheet_directory_uri() . '/style.css',
-                array(),
-                '1.0'
-            );
-        }
-    });
 
-    // Add The Adamson Archive admin page to dashboard menu
-    add_action('admin_menu', function() {
-        add_menu_page(
-            'The Adamson Archive',
-            'Adamson Archive',
-            'manage_options',
-            'adamson-archive',    
-            'adamson_archive_admin_page',
-            'dashicons-archive', 
-            3          
-        );
-    });
+/**
+ * Add the main admin page for the theme.
+ */
+function adamson_archive_add_admin_menu() {
+	add_menu_page(
+		__( 'The Adamson Archive', 'the-adamson-archive' ),
+		__( 'Adamson Archive', 'the-adamson-archive' ),
+		'manage_options',
+		'adamson-archive',
+		'adamson_archive_render_dashboard_page',
+		'dashicons-format-gallery',
+		20
+	);
+}
+add_action( 'admin_menu', 'adamson_archive_add_admin_menu' );
+
+/**
+ * Enqueue styles for the admin dashboard.
+ *
+ * @param string $hook The current admin page hook.
+ */
+function adamson_archive_enqueue_admin_styles( $hook ) {
+	// Only load on our admin page.
+	if ( 'toplevel_page_adamson-archive' !== $hook ) {
+		return;
+	}
+	wp_enqueue_style(
+		'adamson-archive-admin-style',
+		get_stylesheet_uri(),
+		array(),
+		'1.0'
+	);
+}
+add_action( 'admin_enqueue_scripts', 'adamson_archive_enqueue_admin_styles' );

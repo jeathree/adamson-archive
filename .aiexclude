@@ -1,0 +1,19 @@
+# Ignore standard dev noise
+node_modules/
+.git/
+.DS_Store
+*.log
+*.zip
+*.bak
+
+# Ignore the massive media source folder 
+# (We want Gemini to know the path exists, but not index 20,000 files!)
+/uploads/
+
+# Ignore compiled assets if you ever use them
+dist/
+build/
+
+# Do NOT ignore GEMINI.md or .gemini/
+!GEMINI.md
+!.gemini/
