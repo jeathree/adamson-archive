@@ -1,0 +1,20 @@
+{
+  // Connect to my database directly (I need to troubleshoot this more)
+  "mcpServers": {
+    "mysql": {
+      "command": "mcp-server-mysql",
+      "args": [
+        "--host", "srv406.hstgr.io",
+        "--user", "u394016001_mSlGK",
+        "--password", "J4ckj4ck1@",
+        "--database", "u394016001_j75rg"
+      ],
+      "env": {
+        "MYSQL_HOST": "srv406.hstgr.io",
+        "MYSQL_USER": "u394016001_mSlGK",
+        "MYSQL_PASSWORD": "J4ckj4ck1@",
+        "MYSQL_DB": "u394016001_j75rg"
+      }
+    }
+  }
+}

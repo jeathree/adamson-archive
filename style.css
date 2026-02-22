@@ -1,294 +1,59 @@
 /*
-====================
-  Expand/Collapse Arrow
-====================
+	Theme Name: The Adamson Archive
+	Author: Jack Adamson
+	Description: Automated Media Library.
+	Version: 0.1
 */
-.expand-arrow {
-	width: 32px;
-	text-align: center;
-	cursor: pointer;
-}
-.expand-arrow .dashicons {
+
+
+/*--------------------------------------------------------------
+>>> TABLE OF CONTENTS:
+----------------------------------------------------------------
+1.0 Admin Styles
+	1.1 Dashboard
+--------------------------------------------------------------*/
+
+
+/*--------------------------------------------------------------
+1.0 Admin Styles
+--------------------------------------------------------------*/
+
+	/*--------------------------------------------------------------
+	1.1 Dashboard
+	--------------------------------------------------------------*/
+
+	.adamson-archive-dashboard .card {
+		background: #fff;
+		border: 1px solid #c3c4c7;
+		box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
+		margin-bottom: 20px;
+		margin-top: 20px;
+		padding: padding: 1px 12px 12px;
+	}
+
+	.adamson-archive-dashboard .card .title {
+		margin-top: 0;
+	}
+
+.adamson-archive-dashboard .card h2.title {
 	font-size: 1.2em;
-	vertical-align: middle;
-}
-.adamson-album-media-row {
-	display: none;
-}
-
-/*
-====================
-  Layout Container
-====================
-*/
-
-.wrap {
-	background: #fff;
-	border-radius: 8px;
-	box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-	margin: 32px auto;
-	max-width: 1200px;
-	padding: 32px 40px 40px 40px;
-}
-
-
-/*
-====================
-  Page Title
-====================
-*/
-
-h1 {
-	color: #222;
-	font-size: 2.2rem;
-	font-weight: 700;
-	letter-spacing: -1px;
-	margin-bottom: 24px;
-}
-
-
-/*
-====================
-  Summary Bar
-====================
-*/
-
-#adamson-archive-summary {
-	align-items: center;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 18px;
-	margin-bottom: 28px;
-}
-	#adamson-archive-summary strong {
-		font-size: 1.1rem;
-		margin-right: 12px;
-	}
-	#adamson-archive-summary span {
-		background: #f5f7fa;
-		border-radius: 4px;
-		color: #333;
-		font-size: 1rem;
-		margin-right: 8px;
-		padding: 6px 14px;
-	}
-	.adamson-summary-tooltip {
-		cursor: help;
-		position: relative;
-	}
-	.adamson-tooltip {
-		background: #222;
-		border-radius: 4px;
-		color: #fff;
-		font-size: 0.98rem;
-		left: 0;
-		padding: 8px 14px;
-		pointer-events: none;
-		position: absolute;
-		top: 100%;
-		white-space: nowrap;
-		z-index: 1000;
-	}
-
-
-/*
-====================
-  Search & Actions Bar
-====================
-*/
-
-#adamson-archive-search-form {
-	align-items: center;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 12px;
-	margin-bottom: 18px;
-}
-	#adamson-archive-search-form input[type="text"] {
-		border: 1px solid #d1d5db;
-		border-radius: 4px;
-		font-size: 1rem;
-		padding: 7px 12px;
-		width: 220px;
-	}
-	#adamson-archive-search-form .button {
-		font-size: 1rem;
-		padding: 7px 18px;
-		border-radius: 4px;
-		border: none;
-		cursor: pointer;
-		transition: background 0.18s, color 0.18s, box-shadow 0.18s;
-	}
-	#adamson-archive-search-form .button-primary {
-		background: #1976d2;
-		color: #fff;
-	}
-	#adamson-archive-search-form .button-primary:hover {
-		background: #125ea2;
-	}
-	#adamson-archive-search-form .button-danger {
-		background: #e74c3c;
-		color: #fff;
-	}
-	#adamson-archive-search-form .button-danger:hover {
-		background: #ffeaea;
-		color: #c0392b;
-	}
-	#adamson-archive-search-form .dashicons {
-		font-size: 1.1em;
-		vertical-align: middle;
-		margin-right: 4px;
-	}
-
-
-/*
-====================
-  Table Container & Loading
-====================
-*/
-
-#adamson-archive-table-container {
-	min-height: 220px;
-	position: relative;
-}
-	#adamson-archive-table-loading {
-		align-items: center;
-		background: rgba(255,255,255,0.7);
-		display: none;
-		height: 100%;
-		justify-content: center;
-		left: 0;
-		min-height: 220px;
-		position: absolute;
-		top: 0;
-		width: 100%;
-		z-index: 10;
-	}
-	#adamson-archive-table-loading .dashicons {
-		color: #1976d2;
-		font-size: 2.2rem;
-	}
-
-
-/*
-====================
-  Albums Table
-====================
-*/
-
-.wp-list-table {
-	background: #fff;
-	border-collapse: collapse;
-	border-radius: 6px;
-	box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-	font-size: 1rem;
-	margin-bottom: 18px;
-	width: 100%;
-}
-	.wp-list-table th, .wp-list-table td {
-		border-bottom: 1px solid #ececec;
-		padding: 12px 10px;
-		text-align: left;
-	}
-	.wp-list-table th {
-		background: #f5f7fa;
-		color: #222;
-		font-weight: 600;
-		letter-spacing: 0.01em;
-	}
-	.wp-list-table tr:last-child td {
-		border-bottom: none;
-	}
-	.wp-list-table tbody tr:hover {
-		background: #f0f6ff;
-	}
-	.adamson-archive-albums-title {
-		font-size: 1.3rem;
-		font-weight: 600;
-		margin: 24px 0 12px 0;
-	}
-
-
-/*
-====================
-  Buttons (Global)
-====================
-*/
-
-.button {
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-	font-size: 1rem;
-	padding: 7px 18px;
-	transition: background 0.18s, color 0.18s, box-shadow 0.18s;
-}
-	.button:active {
-		box-shadow: 0 2px 8px rgba(25,118,210,0.08);
-	}
-
-
-/*
-====================
-  Album/Queue/Media States
-====================
-*/
-
-.adamson-queue-error {
-	color: #e74c3c;
-	font-size: 0.97em;
-	font-style: italic;
-}
-	.adamson-album-view-link {
-		color: #1976d2;
-		cursor: pointer;
-		font-weight: 500;
-		text-decoration: underline;
-	}
-	.adamson-album-arrow {
-		font-size: 1.1em;
-		margin-left: 2px;
-	}
-	.adamson-album-media-row {
-		background: #f9fbfd;
-	}
-
-
-/*
-====================
-  Media List Grid
-====================
-*/
-
-.adamson-media-list-grid {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 12px;
-	list-style: none;
-	margin: 0;
+	margin: 1em 0;
 	padding: 0;
 }
-	.adamson-media-list-grid li {
-		align-items: center;
-		background: #f5f7fa;
-		border-radius: 4px;
-		color: #333;
-		display: flex;
-		font-size: 1rem;
-		gap: 8px;
-		padding: 8px 14px;
-	}
-	.adamson-media-failed {
-		background: #ffeaea;
-		color: #c0392b;
-	}
-	.adamson-fail-label {
-		color: #e74c3c;
-		font-size: 0.95em;
-		font-style: italic;
-		margin-left: 6px;
-	}
-	.adamson-inline-form {
-		display: inline-block;
-		margin-right: 8px;
-	}
+
+.adamson-archive-dashboard .wp-list-table th {
+	width: auto;
+}
+
+.adamson-archive-dashboard .wp-list-table .column-timestamp {
+	width: 150px;
+}
+
+.adamson-archive-dashboard .wp-list-table .column-event {
+	width: 120px;
+}
+
+/* YouTube Connection Status */
+.adamson-archive-dashboard .dashicons-yes-alt {
+	color: #4CAF50;
+}
