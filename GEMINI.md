@@ -14,6 +14,7 @@
 * **Parsing Logic:** Folder names follow the pattern `YYYY-MM-DD - [Album Name]`. Use Regex to extract the **Date** and **Clean Name**.
 * **File Handling:** Support all common image/video formats (case-insensitive).
 * **Queue System:** Must use AJAX-driven batch processing to handle the 20,000+ file scale without PHP timeouts. Progress must be reported in real-time.
+* **Status:** [x] Complete.
 
 ### 2. Database Schema (Flexible Growth)
 We will use three primary custom tables. Gemini should suggest and add columns (including proper data types and indexes) as specific features are implemented. Always use `$wpdb` and check if columns exist before creation.
@@ -24,16 +25,19 @@ We will use three primary custom tables. Gemini should suggest and add columns (
     * **Purpose:** Stores individual file data for photos (local) and videos (offloaded).
 * **Table: `adamson_archive_queue`**
     * **Purpose:** Manages the background processing state and tracks error logs for failed items.
+* **Status:** [x] Complete.
 
 ### 3. External API: YouTube Integration
 * **Logic:** Check for an existing `yt_playlist_id` for the album; create it if missing. Upload videos to that playlist and record the `yt_video_id` back to the media table.
 * **Authentication:** Implement a one-time OAuth 2.0 flow via a "Connect to YouTube" button on the admin dashboard. Securely store the resulting access/refresh tokens in the `wp_options` table. Display the current connection status to the admin.
+* **Status:** [x] Complete.
 
 ### 4. Admin UI & Frontend Behavior
 * **Dashboard:** Custom WP Admin page with a "Scan" button and a real-time progress bar.
 * **Scan UX:** When the "Scan" button is clicked, it should be disabled to prevent multiple submissions. The Activity Log table should update via AJAX polling to show near real-time status messages (e.g., "Scanning folder X...", "Queuing video Y...").
 * **Album List:** Lazy-loaded list (10 items) with "Load More" AJAX pagination.
 * **Interaction:** Accordion-style rows that fetch and display media via AJAX only when expanded.
+* **Status:** [x] Complete.
 
 ## Project Context
 - **Tech Stack:** Vanilla PHP, HTML5, CSS3, jQuery (No modern frameworks).

@@ -1,0 +1,132 @@
+.adamson-archive-dashboard .card .yt-status {
+	padding: 10px 15px;
+	border: 1px solid #ccd0d4;
+	border-left-width: 4px;
+	box-shadow: 0 1px 1px rgba(0,0,0,.04);
+	margin-bottom: 1em;
+}
+
+.adamson-archive-dashboard .card .yt-status.is-connected {
+	border-left-color: #46b450;
+}
+
+.adamson-archive-dashboard .card .yt-status.is-disconnected {
+	border-left-color: #dc3232;
+}
+
+.adamson-archive-dashboard .card .yt-status p {
+	margin: 0;
+	padding: 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.archive-controls {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 1em;
+}
+
+.control-group {
+	display: flex;
+	align-items: center;
+}
+
+.control-group .button {
+	margin-right: 10px;
+}
+
+.album-row .toggle-row {
+	cursor: pointer;
+}
+
+.album-row .toggle-row:before {
+	content: "\f132";
+	font-family: dashicons;
+	font-size: 20px;
+	line-height: 1;
+	text-decoration: none;
+}
+
+.album-row.is-expanded .toggle-row:before {
+	content: "\f460";
+}
+
+.media-row .media-container {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	grid-gap: 10px;
+	padding: 10px;
+}
+
+.media-item img {
+	width: 100%;
+	height: auto;
+	border: 1px solid #ccd0d4;
+}
+
+.media-item p {
+	margin: 5px 0 0;
+	text-align: center;
+	font-size: 12px;
+}
+
+.tab-content {
+	display: none;
+}
+
+.tab-content.active {
+	display: block;
+}
+
+#media-explorer .card {
+	max-width: 1250px;
+}
+
+#activity-log .wp-list-table td:first-child {
+	min-width: 100px;
+}
+
+.button-danger {
+    background-color: #dc3232;
+    border-color: #dc3232;
+    color: #fff;
+}
+
+.button-danger:hover,
+.button-danger:focus {
+    background-color: #a02323;
+    border-color: #a02323;
+    color: #fff;
+}
+
+#adamson-archive-load-more-albums {
+    margin-top: 1em;
+}
+
+.media-summary {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border-bottom: 1px solid #ccd0d4;
+}
+
+#view-pending-videos-link {
+	text-decoration: underline;
+}
+
+#view-pending-videos-link:hover {
+	text-decoration: none;
+}
+
+#pending-videos-container {
+	margin-bottom: 1em;
+}
+
+#pending-videos-table-wrapper .wp-list-table {
+	margin-bottom: 1em;
+}
+
+

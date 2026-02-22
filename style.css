@@ -26,10 +26,34 @@
 		background: #fff;
 		border: 1px solid #c3c4c7;
 		box-shadow: 0 1px 1px rgba(0, 0, 0, .04);
+		margin-bottom: 20px;
 		margin-top: 20px;
-		padding: 20px;
+		padding: padding: 1px 12px 12px;
 	}
 
 	.adamson-archive-dashboard .card .title {
 		margin-top: 0;
 	}
+
+.adamson-archive-dashboard .card h2.title {
+	font-size: 1.2em;
+	margin: 1em 0;
+	padding: 0;
+}
+
+.adamson-archive-dashboard .wp-list-table th {
+	width: auto;
+}
+
+.adamson-archive-dashboard .wp-list-table .column-timestamp {
+	width: 150px;
+}
+
+.adamson-archive-dashboard .wp-list-table .column-event {
+	width: 120px;
+}
+
+/* YouTube Connection Status */
+.adamson-archive-dashboard .dashicons-yes-alt {
+	color: #4CAF50;
+}
