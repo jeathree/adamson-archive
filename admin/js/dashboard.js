@@ -127,8 +127,10 @@ jQuery(document).ready(function($) {
 						}
 
 						let playlistCell = '<td>No Videos</td>';
-						if (album.video_count > 0 && album.yt_playlist_id && album.yt_playlist_url) {
-							playlistCell = `<td><a href="${album.yt_playlist_url}" target="_blank">${album.yt_playlist_id}</a></td>`;
+						if (video_count > 0 && album.yt_playlist_id) {
+							const playlistUrl = `https://www.youtube.com/playlist?list=${album.yt_playlist_id}`;
+							const playlistName = album.album_date ? `${album.album_date} - ${album.display_name}` : album.display_name;
+							playlistCell = `<td><a href="${playlistUrl}" target="_blank">${playlistName}</a></td>`;
 						}
 
 						const row = `<tr id="album-${album.id}" class="album-row">

@@ -22,22 +22,25 @@ add_action( 'wp_ajax_adamson_archive_delete_media_item', 'adamson_archive_ajax_d
 add_action( 'wp_ajax_adamson_archive_delete_album', 'adamson_archive_ajax_delete_album' );
 
 /**
- * Helper: Ensure the is_removed column exists.
+ * Helper: Ensure required database columns exist.
  */
 function adamson_archive_ensure_is_removed_column() {
 	global $wpdb;
-	$tables = array( 'adamson_archive_media', 'adamson_archive_albums' );
-	foreach ( $tables as $table ) {
-		// Check if table exists first to avoid errors on fresh installs.
-		$table_exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) );
-		if ( $table_exists !== $table ) {
-			continue;
-		}
+	$table_albums = 'adamson_archive_albums';
+	$table_media  = 'adamson_archive_media';
 
-		$column = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $table LIKE %s", 'is_removed' ) );
-		if ( empty( $column ) ) {
+	// Ensure is_removed exists on both tables
+	foreach ( array( $table_albums, $table_media ) as $table ) {
+		$has_column = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $table LIKE %s", 'is_removed' ) );
+		if ( ! $has_column ) {
 			$wpdb->query( "ALTER TABLE $table ADD COLUMN is_removed TINYINT(1) DEFAULT 0" );
 		}
+	}
+
+	// Ensure yt_playlist_id exists on albums table
+	$has_playlist_col = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $table_albums LIKE %s", 'yt_playlist_id' ) );
+	if ( ! $has_playlist_col ) {
+		$wpdb->query( "ALTER TABLE $table_albums ADD COLUMN yt_playlist_id VARCHAR(255) DEFAULT NULL" );
 	}
 }
 
@@ -322,6 +325,7 @@ function adamson_archive_ajax_restore_media_item() {
 
 	global $wpdb;
 	$table_media = 'adamson_archive_media';
+	$table_albums = 'adamson_archive_albums';
 	
 	$media_item = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_media WHERE id = %d", $media_id ) );
 
@@ -329,11 +333,15 @@ function adamson_archive_ajax_restore_media_item() {
 		wp_send_json_error( array( 'message' => 'Only photos can be restored.' ) );
 	}
 
+	// Restore the media item.
 	$updated = $wpdb->update(
 		$table_media,
 		array( 'is_removed' => 0 ),
 		array( 'id' => $media_id )
 	);
+
+	// Automatically restore the parent album so the item becomes visible in the gallery.
+	$wpdb->update( $table_albums, array( 'is_removed' => 0 ), array( 'id' => $media_item->album_id ) );
 
 	if ( false === $updated ) {
 		wp_send_json_error( array( 'message' => 'Failed to restore item.' ) );
