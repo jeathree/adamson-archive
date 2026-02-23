@@ -70,6 +70,13 @@
 			'1.0'
 		);
 
+		wp_enqueue_style(
+			'adamson-archive-lightbox-style',
+			get_theme_file_uri( '/admin/css/lightbox.css' ),
+			array(),
+			'1.0'
+		);
+
 		// Enqueue Toastr CSS from CDN
 		wp_enqueue_style(
 			'toastr-style',
@@ -141,3 +148,10 @@
 		);
 	}
 	add_action( 'admin_enqueue_scripts', 'adamson_archive_enqueue_admin_assets' );
+
+	add_action( 'wp_ajax_adamson_archive_get_removed_media', 'adamson_archive_ajax_get_removed_media' );
+	add_action( 'wp_ajax_adamson_archive_restore_media_item', 'adamson_archive_ajax_restore_media_item' );
+	add_action( 'wp_ajax_adamson_archive_restore_album', 'adamson_archive_ajax_restore_album' );
+	add_action( 'wp_ajax_adamson_archive_get_removed_media_details', 'adamson_archive_ajax_get_removed_media_details' );
+	add_action( 'wp_ajax_adamson_archive_permanent_delete_media', 'adamson_archive_ajax_permanent_delete_media' );
+	add_action( 'wp_ajax_adamson_archive_permanent_delete_album', 'adamson_archive_ajax_permanent_delete_album' );

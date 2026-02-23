@@ -88,13 +88,11 @@ function adamson_archive_render_dashboard_page() {
 				<p>
 					Create or verify the necessary database tables for the media library. This is a safe, one-time action.
 				</p>
-				<form method="post">
-					<input type="hidden" name="adamson_archive_setup_db" value="1">
-					<?php wp_nonce_field( 'adamson_archive_db_setup_action', 'adamson_archive_db_nonce' ); ?>
-					<button type="submit" class="button button-secondary">
+				<div class="actions">
+					<button type="button" id="adamson-archive-setup-db" class="button button-secondary">
 						<?php esc_html_e( 'Create / Verify Database Tables', 'the-adamson-archive' ); ?>
 					</button>
-				</form>
+				</div>
 			</div>
 			<div class="card">
 				<h2 class="title">YouTube Integration</h2>
@@ -157,6 +155,13 @@ function adamson_archive_render_dashboard_page() {
 						By default, local video files are deleted after a successful YouTube upload to save server space (Hybrid Storage model). Check this box to keep the local files instead.
 					</p>
 				</form>
+			</div>
+			<div id="adamson-removed-content-section" class="card">
+				<h2 class="title">Removed Content</h2>
+				<p class="description">Items listed here can be restored to the gallery. Note: Videos deleted from YouTube cannot be restored.</p>
+				<div id="adamson-removed-media-list">
+					<!-- Content loaded via AJAX -->
+				</div>
 			</div>
 		</div>
 

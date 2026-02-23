@@ -58,6 +58,27 @@ jQuery(document).ready(function($) {
 		toastr['error'](shortMessage);
 	}
 
+	// Initialize Lightbox
+	if (!$('#adamson-video-lightbox').length) {
+		$('body').append(`
+			<div id="adamson-video-lightbox" class="adamson-lightbox">
+				<div class="adamson-lightbox-overlay"></div>
+				<div class="adamson-lightbox-content">
+					<button class="adamson-lightbox-close" title="Close">&times;</button>
+					<div class="adamson-video-responsive-container"></div>
+				</div>
+			</div>
+		`);
+	}
+
+	const $lightbox = $('#adamson-video-lightbox');
+	const $lightboxContainer = $lightbox.find('.adamson-video-responsive-container');
+
+	$lightbox.on('click', '.adamson-lightbox-overlay, .adamson-lightbox-close', function() {
+		$lightbox.fadeOut(300, function() {
+			$lightboxContainer.empty();
+		});
+	});
 
 	function updateDashboardCounts() {
 		$.ajax({
@@ -85,7 +106,8 @@ jQuery(document).ready(function($) {
 			type: 'POST',
 			data: {
 				action: 'adamson_archive_load_albums',
-				page: currentPage
+				page: currentPage,
+				nonce: adamsonArchive.nonce
 			},
 			success: function(response) {
 				if (response.success) {
@@ -169,7 +191,8 @@ jQuery(document).ready(function($) {
 				type: 'POST',
 				data: {
 					action: 'adamson_archive_get_album_media',
-					album_id: albumId
+					album_id: albumId,
+					nonce: adamsonArchive.nonce
 				},
 				success: function(response) {
 					if (response.success) {
@@ -179,7 +202,6 @@ jQuery(document).ready(function($) {
 						const video_count = counts.video_count || 0;
 						const total_media = counts.total_media || 0;
 
-						mediaHtml += `<div class="media-summary">Total: ${total_media} (Images: ${photo_count}, Videos: ${video_count})</div>`;
 						mediaHtml += `<div class="media-container">`;
 
 						response.data.media.forEach(function(media) {
@@ -237,7 +259,7 @@ jQuery(document).ready(function($) {
 
 	$albumList.on('click', '.media-item', function(e) {
 		const $item = $(this);
-		if ($item.data('file-type') !== 'video' || $item.hasClass('is-playing')) {
+		if ($item.data('file-type') !== 'video') {
 			return;
 		}
 
@@ -246,8 +268,8 @@ jQuery(document).ready(function($) {
 
 		const embedHtml = decodeURIComponent($item.data('embed-html'));
 		if (embedHtml) {
-			$item.addClass('is-playing');
-			$item.find('.media-item-wrapper').html(embedHtml);
+			$lightboxContainer.html(embedHtml);
+			$lightbox.fadeIn(300);
 		}
 	});
 
@@ -256,7 +278,7 @@ jQuery(document).ready(function($) {
 		const $btn = $(this);
 		const albumId = $btn.data('album-id');
 
-		if (confirm('Are you sure you want to delete this entire album? This will delete all local files and all associated YouTube videos and playlists. This action cannot be undone.')) {
+		if (confirm('Are you sure? This album and its photos will be hidden from the gallery but kept on the server. You can restore it from the Settings tab.')) {
 			$.ajax({
 				url: adamsonArchive.ajax_url,
 				type: 'POST',
@@ -285,8 +307,13 @@ jQuery(document).ready(function($) {
 		e.preventDefault();
 		const $btn = $(this);
 		const mediaId = $btn.data('media-id');
+		const isVideo = $btn.closest('.media-item').data('file-type') === 'video';
+		
+		const confirmMsg = isVideo 
+			? 'Are you sure? This will permanently delete the video from YouTube. This action cannot be undone and the video cannot be restored.'
+			: 'Are you sure? This photo will be hidden from the gallery but kept on the server. You can restore it from the Settings tab.';
 
-		if (confirm('Are you sure you want to delete this media item? This action cannot be undone.')) {
+		if (confirm(confirmMsg)) {
 			$.ajax({
 				url: adamsonArchive.ajax_url,
 				type: 'POST',
@@ -299,7 +326,12 @@ jQuery(document).ready(function($) {
 					if (response.success) {
 						log(response.data.message, 'success');
 						const $itemToRemove = $btn.closest('.media-item');
+						const $mediaRow = $itemToRemove.closest('.media-row');
+						const albumId = $mediaRow.prev('.album-row').attr('id').replace('album-', '');
+						
 						$itemToRemove.closest('.media-container').isotope('remove', $itemToRemove).isotope('layout');
+						
+						updateAlbumRow(albumId);
 					} else {
 						logError('Error deleting media.', response.data.message);
 					}
@@ -469,13 +501,22 @@ jQuery(document).ready(function($) {
 			type: 'POST',
 			data: {
 				action: 'adamson_archive_get_album_media',
-				album_id: albumId
+				album_id: albumId,
+				nonce: adamsonArchive.nonce
 			},
 			success: function(response) {
 				if (response.success) {
 					const counts = response.data.counts;
-					const text = `Total: ${counts.total_media} (Images: ${counts.photo_count}, Videos: ${counts.video_count})`;
-					$row.find('.album-counts').text(text);
+					const photo_count = parseInt(counts.photo_count) || 0;
+					const video_count = parseInt(counts.video_count) || 0;
+					const pending_count = parseInt(counts.pending_count) || 0;
+					const total = photo_count + video_count + pending_count;
+
+					let counts_string = `Images: ${photo_count}, YouTube Videos: ${video_count}`;
+					if (pending_count > 0) {
+						counts_string += `, Pending Videos: ${pending_count}`;
+					}
+					$row.find('.album-counts').text(`Total: ${total} (${counts_string})`);
 				}
 			}
 		});
@@ -490,7 +531,217 @@ jQuery(document).ready(function($) {
 		$this.addClass('nav-tab-active').siblings().removeClass('nav-tab-active');
 		$('.tab-content').removeClass('active');
 		$(target).addClass('active');
+
+		if (target === '#settings') {
+			loadRemovedMedia();
+		}
 	});
+
+	function loadRemovedMedia() {
+		let $container = $('#adamson-removed-media-list');
+		if (!$container.length) {
+			return;
+		}
+
+		$container.html('<p>Loading removed items...</p>');
+
+		$.ajax({
+			url: adamsonArchive.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'adamson_archive_get_removed_media',
+				nonce: adamsonArchive.nonce
+			},
+			success: function(response) {
+				if (response.success) {
+					if (response.data.albums.length === 0) {
+						$container.html('<p>No removed content found.</p>');
+						return;
+					}
+
+					let html = '<div class="removed-accordion">';
+					response.data.albums.forEach(function(album) {
+						const isRemoved = parseInt(album.album_removed) === 1;
+						html += `
+							<div class="removed-album-group" data-album-id="${album.id}">
+								<div class="removed-album-header" style="display: flex; align-items: center; justify-content: space-between; background: #f6f7f7; border: 1px solid #ccd0d4; padding: 10px; cursor: pointer; margin-bottom: 5px;">
+									<span>
+										<strong>${isRemoved ? '[REMOVED ALBUM]' : '[ACTIVE ALBUM]'}</strong> ${album.display_name} 
+										<small>(${album.removed_count} items)</small>
+									</span>
+									<div class="group-actions">
+										<button class="button button-small restore-album-item" data-album-id="${album.id}">Restore</button>
+										<button class="button button-small button-link-delete permanent-delete-album" data-album-id="${album.id}">Wipe Permanently</button>
+									</div>
+								</div>
+								<div class="removed-album-details" style="display: none; padding: 10px; border: 1px solid #ccd0d4; border-top: none; margin-bottom: 10px;">
+									<p>Loading items...</p>
+								</div>
+							</div>`;
+					});
+					html += '</div>';
+					$container.html(html);
+				}
+			},
+			error: function() {
+				$container.html('<p>Error loading removed content. Please refresh and try again.</p>');
+			}
+		});
+	}
+
+	$(document).on('click', '.removed-album-header', function(e) {
+		if ($(e.target).is('button')) return;
+		const $group = $(this).closest('.removed-album-group');
+		const $details = $group.find('.removed-album-details');
+		const albumId = $group.data('album-id');
+
+		$details.slideToggle();
+
+		if (!$group.hasClass('loaded')) {
+			$.ajax({
+				url: adamsonArchive.ajax_url,
+				type: 'POST',
+				data: {
+					action: 'adamson_archive_get_removed_media_details',
+					album_id: albumId,
+					nonce: adamsonArchive.nonce
+				},
+				success: function(response) {
+					if (response.success) {
+						let itemsHtml = '<ul style="margin: 0;">';
+						response.data.media.forEach(function(item) {
+							const canRestore = item.file_type === 'photo';
+							itemsHtml += `
+								<li style="display: flex; align-items: center; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #eee;">
+									<span><strong>[${item.file_type.toUpperCase()}]</strong> ${item.filename}</span>
+									<div>
+										${canRestore ? `<button class="button button-small restore-media-item" data-media-id="${item.id}">Restore</button>` : ''}
+										<button class="button button-small button-link-delete permanent-delete-media" data-media-id="${item.id}">Delete Forever</button>
+									</div>
+								</li>`;
+						});
+						itemsHtml += '</ul>';
+						$details.html(itemsHtml);
+						$group.addClass('loaded');
+					}
+				}
+			});
+		}
+	});
+
+	$(document).on('click', '.permanent-delete-media', function() {
+		const mediaId = $(this).data('media-id');
+		if (confirm('Are you sure? This will permanently delete the file from the server. This cannot be undone.')) {
+			$.ajax({
+				url: adamsonArchive.ajax_url,
+				type: 'POST',
+				data: {
+					action: 'adamson_archive_permanent_delete_media',
+					media_id: mediaId,
+					nonce: adamsonArchive.nonce
+				},
+				success: function(response) {
+					if (response.success) {
+						log(response.data.message, 'success');
+						loadRemovedMedia();
+					}
+				}
+			});
+		}
+	});
+
+	$(document).on('click', '.permanent-delete-album', function() {
+		const albumId = $(this).data('album-id');
+		if (confirm('WARNING: This will permanently delete the entire folder from the server and all associated YouTube content. This action is IRREVERSIBLE.')) {
+			$.ajax({
+				url: adamsonArchive.ajax_url,
+				type: 'POST',
+				data: {
+					action: 'adamson_archive_permanent_delete_album',
+					album_id: albumId,
+					nonce: adamsonArchive.nonce
+				},
+				success: function(response) {
+					if (response.success) {
+						log(response.data.message, 'success');
+						loadRemovedMedia();
+					}
+				}
+			});
+		}
+	});
+
+	$(document).on('click', '.restore-media-item', function() {
+		const mediaId = $(this).data('media-id');
+		$.ajax({
+			url: adamsonArchive.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'adamson_archive_restore_media_item',
+				media_id: mediaId,
+				nonce: adamsonArchive.nonce
+			},
+			success: function(response) {
+				if (response.success) {
+					log(response.data.message, 'success');
+					loadRemovedMedia();
+					currentPage = 1;
+					$albumList.empty();
+					loadAlbums();
+				}
+			}
+		});
+	});
+
+	$(document).on('click', '.restore-album-item', function() {
+		const albumId = $(this).data('album-id');
+		$.ajax({
+			url: adamsonArchive.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'adamson_archive_restore_album',
+				album_id: albumId,
+				nonce: adamsonArchive.nonce
+			},
+			success: function(response) {
+				if (response.success) {
+					log(response.data.message, 'success');
+					loadRemovedMedia();
+					currentPage = 1;
+					$albumList.empty();
+					loadAlbums();
+				}
+			}
+		});
+	});
+
+	// Database Setup Button Handler
+	$(document).on('click', '#adamson-archive-setup-db', function(e) {
+		e.preventDefault();
+		const $btn = $(this);
+		$btn.prop('disabled', true).text('Verifying...');
+
+		$.ajax({
+			url: adamsonArchive.ajax_url,
+			type: 'POST',
+			data: {
+				action: 'adamson_archive_setup_database',
+				nonce: adamsonArchive.nonce
+			},
+			success: function(response) {
+				if (response.success) {
+					log(response.data.message, 'success');
+					loadRemovedMedia();
+				}
+				$btn.prop('disabled', false).text('Create / Verify Database Tables');
+			}
+		});
+	});
+
+	// Check if we are starting on the settings tab
+	if (window.location.hash === '#settings' || $('.nav-tab-active').attr('href') === '#settings') {
+		loadRemovedMedia();
+	}
 
 	// Inject "Disable Delete" checkbox for testing
 	const $deleteMediaBtn = $('#adamson-archive-delete-all-media');

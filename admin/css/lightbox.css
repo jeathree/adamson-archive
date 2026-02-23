@@ -1,0 +1,56 @@
+.adamson-lightbox {
+	display: none;
+	height: 100%;
+	left: 0;
+	position: fixed;
+	top: 0;
+	width: 100%;
+	z-index: 999999;
+}
+
+	.adamson-lightbox-overlay {
+		background: rgba(0, 0, 0, 0.85);
+		height: 100%;
+		left: 0;
+		position: absolute;
+		top: 0;
+		width: 100%;
+	}
+
+	.adamson-lightbox-content {
+		left: 50%;
+		max-width: 90%;
+		position: absolute;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		width: 1000px;
+	}
+
+		.adamson-lightbox-close {
+			background: none;
+			border: none;
+			color: #fff;
+			cursor: pointer;
+			font-size: 40px;
+			line-height: 1;
+			padding: 10px;
+			position: absolute;
+			right: -40px;
+			top: -40px;
+		}
+
+		.adamson-video-responsive-container {
+			background: #000;
+			height: 0;
+			overflow: hidden;
+			padding-bottom: 56.25%;
+			position: relative;
+		}
+
+			.adamson-video-responsive-container iframe {
+				height: 100%;
+				left: 0;
+				position: absolute;
+				top: 0;
+				width: 100%;
+			}

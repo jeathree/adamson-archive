@@ -196,7 +196,7 @@ function adamson_archive_process_next_queue_item( $disable_delete = false ) {
 		$youtube->playlistItems->insert( 'snippet', $playlist_item );
 
 		// 8. Success: Update Media Table, Delete Local File, Update Queue.
-		$embed_html = '<iframe width="560" height="315" src="https://www.youtube.com/embed/' . $video_id . '" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+		$embed_html = '<iframe src="https://www.youtube.com/embed/' . $video_id . '?autoplay=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
 		$thumbnail_url = 'https://img.youtube.com/vi/' . $video_id . '/hqdefault.jpg';
 
 		$wpdb->insert(

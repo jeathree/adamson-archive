@@ -13,9 +13,7 @@ add_action( 'wp_ajax_adamson_archive_scan_albums', 'adamson_archive_ajax_scan_al
 add_action( 'wp_ajax_adamson_archive_process_album', 'adamson_archive_ajax_process_album' );
 add_action( 'wp_ajax_adamson_archive_process_queue_item', 'adamson_archive_ajax_process_queue_item' );
 add_action( 'wp_ajax_adamson_archive_load_albums', 'adamson_archive_ajax_load_albums' );
-add_action( 'wp_ajax_nopriv_adamson_archive_load_albums', 'adamson_archive_ajax_load_albums' );
 add_action( 'wp_ajax_adamson_archive_get_album_media', 'adamson_archive_ajax_get_album_media' );
-add_action( 'wp_ajax_nopriv_adamson_archive_get_album_media', 'adamson_archive_ajax_get_album_media' );
 add_action( 'wp_ajax_adamson_archive_delete_all_media', 'adamson_archive_ajax_delete_all_media' );
 add_action( 'wp_ajax_adamson_archive_get_dashboard_counts', 'adamson_archive_ajax_get_dashboard_counts' );
 add_action( 'wp_ajax_adamson_archive_get_pending_videos', 'adamson_archive_ajax_get_pending_videos' );
@@ -24,10 +22,45 @@ add_action( 'wp_ajax_adamson_archive_delete_media_item', 'adamson_archive_ajax_d
 add_action( 'wp_ajax_adamson_archive_delete_album', 'adamson_archive_ajax_delete_album' );
 
 /**
+ * Helper: Ensure the is_removed column exists.
+ */
+function adamson_archive_ensure_is_removed_column() {
+	global $wpdb;
+	$tables = array( 'adamson_archive_media', 'adamson_archive_albums' );
+	foreach ( $tables as $table ) {
+		// Check if table exists first to avoid errors on fresh installs.
+		$table_exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) );
+		if ( $table_exists !== $table ) {
+			continue;
+		}
+
+		$column = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $table LIKE %s", 'is_removed' ) );
+		if ( empty( $column ) ) {
+			$wpdb->query( "ALTER TABLE $table ADD COLUMN is_removed TINYINT(1) DEFAULT 0" );
+		}
+	}
+}
+
+/**
+ * AJAX Handler: Manually trigger database table verification.
+ */
+function adamson_archive_ajax_setup_database() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	
+	// Call the column helper. 
+	// Note: If you have a main table creation function in database.php, call it here too.
+	adamson_archive_ensure_is_removed_column();
+
+	wp_send_json_success( array( 'message' => 'Database tables and columns verified.' ) );
+}
+add_action( 'wp_ajax_adamson_archive_setup_database', 'adamson_archive_ajax_setup_database' );
+
+/**
  * AJAX Handler: Delete an entire album and all its contents.
  */
 function adamson_archive_ajax_delete_album() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	adamson_archive_ensure_is_removed_column();
 
 	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
 
@@ -47,61 +80,11 @@ function adamson_archive_ajax_delete_album() {
 	}
 
 	try {
-		// 1. Delete all media items associated with the album
-		$media_items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table_media WHERE album_id = %d", $album_id ) );
-		$youtube     = null;
+		// Soft delete: Mark album and all its media as removed.
+		$wpdb->update( $table_albums, array( 'is_removed' => 1 ), array( 'id' => $album_id ) );
+		$wpdb->update( $table_media, array( 'is_removed' => 1 ), array( 'album_id' => $album_id ) );
 
-		foreach ( $media_items as $media_item ) {
-			if ( 'photo' === $media_item->file_type ) {
-				if ( file_exists( $media_item->file_path ) ) {
-					@unlink( $media_item->file_path );
-				}
-			} elseif ( 'video' === $media_item->file_type && ! empty( $media_item->yt_video_id ) ) {
-				if ( ! $youtube ) {
-					if ( ! adamson_archive_is_youtube_connected() ) {
-						throw new Exception( 'YouTube account is not connected.' );
-					}
-					$client = adamson_archive_get_google_client();
-					if ( is_wp_error( $client ) ) {
-						throw new Exception( 'Could not connect to YouTube: ' . $client->get_error_message() );
-					}
-					$youtube = new Google_Service_YouTube( $client );
-				}
-				$youtube->videos->delete( $media_item->yt_video_id );
-			}
-		}
-
-		// 2. Delete the YouTube playlist
-		if ( ! empty( $album->yt_playlist_id ) ) {
-			if ( ! $youtube ) {
-				if ( ! adamson_archive_is_youtube_connected() ) {
-					throw new Exception( 'YouTube account is not connected.' );
-				}
-				$client = adamson_archive_get_google_client();
-				if ( is_wp_error( $client ) ) {
-					throw new Exception( 'Could not connect to YouTube: ' . $client->get_error_message() );
-				}
-				$youtube = new Google_Service_YouTube( $client );
-			}
-			$youtube->playlists->delete( $album->yt_playlist_id );
-		}
-
-		// 3. Delete the local album folder
-		if ( ! empty( $album->path ) && is_dir( $album->path ) ) {
-			adamson_archive_delete_directory( $album->path );
-		}
-
-		// 4. Delete from media table
-		$wpdb->delete( $table_media, array( 'album_id' => $album_id ) );
-
-		// 5. Delete from queue table (based on album_id in data)
-		$like_pattern = '%"album_id":' . $wpdb->esc_like( $album_id ) . '%';
-		$wpdb->query( $wpdb->prepare( "DELETE FROM $table_queue WHERE data LIKE %s", $like_pattern ) );
-
-		// 6. Delete from albums table
-		$wpdb->delete( $table_albums, array( 'id' => $album_id ) );
-
-		wp_send_json_success( array( 'message' => 'Album deleted successfully.' ) );
+		wp_send_json_success( array( 'message' => 'Album and its media moved to removed list.' ) );
 
 	} catch ( Exception $e ) {
 		wp_send_json_error( array( 'message' => 'Error deleting album: ' . $e->getMessage() ) );
@@ -137,6 +120,7 @@ function adamson_archive_delete_directory( $dir ) {
  */
 function adamson_archive_ajax_delete_media_item() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	adamson_archive_ensure_is_removed_column();
 
 	$media_id = isset( $_POST['media_id'] ) ? intval( $_POST['media_id'] ) : 0;
 
@@ -153,12 +137,7 @@ function adamson_archive_ajax_delete_media_item() {
 	}
 
 	try {
-		if ( 'photo' === $media_item->file_type ) {
-			// Delete local photo file
-			if ( file_exists( $media_item->file_path ) ) {
-				@unlink( $media_item->file_path );
-			}
-		} elseif ( 'video' === $media_item->file_type && ! empty( $media_item->yt_video_id ) ) {
+		if ( 'video' === $media_item->file_type && ! empty( $media_item->yt_video_id ) ) {
 			// Delete YouTube video
 			if ( ! adamson_archive_is_youtube_connected() ) {
 				wp_send_json_error( array( 'message' => 'YouTube account is not connected.' ) );
@@ -171,14 +150,230 @@ function adamson_archive_ajax_delete_media_item() {
 			$youtube->videos->delete( $media_item->yt_video_id );
 		}
 
-		// Delete the media record from the database
-		$wpdb->delete( $table_media, array( 'id' => $media_id ) );
+		// Soft delete: Update the media record
+		$wpdb->update( $table_media, array( 'is_removed' => 1 ), array( 'id' => $media_id ) );
 
-		wp_send_json_success( array( 'message' => 'Media item deleted successfully.' ) );
+		wp_send_json_success( array( 'message' => 'Media item removed.' ) );
 
 	} catch ( Exception $e ) {
 		wp_send_json_error( array( 'message' => 'Error deleting media item: ' . $e->getMessage() ) );
 	}
+}
+
+/**
+ * AJAX Handler: Get a summary of albums containing removed content.
+ */
+function adamson_archive_ajax_get_removed_media() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	adamson_archive_ensure_is_removed_column();
+
+	global $wpdb;
+	$table_media  = 'adamson_archive_media';
+	$table_albums = 'adamson_archive_albums';
+
+	// Get albums that are either removed themselves or contain removed media
+	$results = $wpdb->get_results( "
+		SELECT a.id, a.display_name, a.is_removed as album_removed, COUNT(m.id) as removed_count
+		FROM $table_albums a
+		LEFT JOIN $table_media m ON a.id = m.album_id AND m.is_removed = 1
+		WHERE a.is_removed = 1 OR m.is_removed = 1
+		GROUP BY a.id
+		ORDER BY a.display_name ASC
+	" );
+
+	wp_send_json_success( array( 'albums' => $results ) );
+}
+
+/**
+ * AJAX Handler: Get removed media items for a specific album.
+ */
+function adamson_archive_ajax_get_removed_media_details() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	
+	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
+	if ( ! $album_id ) {
+		wp_send_json_error( array( 'message' => 'Invalid Album ID.' ) );
+	}
+
+	global $wpdb;
+	$table_media = 'adamson_archive_media';
+	
+	$media = $wpdb->get_results( $wpdb->prepare( 
+		"SELECT * FROM $table_media WHERE album_id = %d AND is_removed = 1 ORDER BY filename ASC", 
+		$album_id 
+	) );
+
+	wp_send_json_success( array( 'media' => $media ) );
+}
+
+/**
+ * AJAX Handler: Permanently delete a single media item.
+ */
+function adamson_archive_ajax_permanent_delete_media() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+
+	$media_id = isset( $_POST['media_id'] ) ? intval( $_POST['media_id'] ) : 0;
+	global $wpdb;
+	$table_media = 'adamson_archive_media';
+
+	$item = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_media WHERE id = %d", $media_id ) );
+	if ( ! $item ) {
+		wp_send_json_error( array( 'message' => 'Item not found.' ) );
+	}
+
+	// If it's a photo, delete the physical file. 
+	// (Videos are already handled by the hybrid model or soft-delete YT wipe).
+	if ( 'photo' === $item->file_type && file_exists( $item->file_path ) ) {
+		@unlink( $item->file_path );
+	}
+
+	$wpdb->delete( $table_media, array( 'id' => $media_id ) );
+	wp_send_json_success( array( 'message' => 'Item permanently deleted.' ) );
+}
+
+/**
+ * AJAX Handler: Permanently delete an entire album.
+ */
+function adamson_archive_ajax_permanent_delete_album() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+
+	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
+	global $wpdb;
+	$table_albums = 'adamson_archive_albums';
+	$table_media  = 'adamson_archive_media';
+	$table_queue  = 'adamson_archive_queue';
+
+	$album = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_albums WHERE id = %d", $album_id ) );
+	if ( ! $album ) {
+		wp_send_json_error( array( 'message' => 'Album not found.' ) );
+	}
+
+	try {
+		$media_items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table_media WHERE album_id = %d", $album_id ) );
+		$youtube = null;
+
+		foreach ( $media_items as $item ) {
+			if ( 'photo' === $item->file_type ) {
+				if ( file_exists( $item->file_path ) ) {
+					@unlink( $item->file_path );
+				}
+			} elseif ( 'video' === $item->file_type && ! empty( $item->yt_video_id ) ) {
+				if ( ! $youtube && adamson_archive_is_youtube_connected() ) {
+					$client = adamson_archive_get_google_client();
+					if ( ! is_wp_error( $client ) ) {
+						$youtube = new Google_Service_YouTube( $client );
+					}
+				}
+				if ( $youtube ) {
+					try {
+						$youtube->videos->delete( $item->yt_video_id );
+					} catch ( Exception $e ) {
+						// Continue if video already deleted from YT
+					}
+				}
+			}
+		}
+
+		// Delete YT Playlist
+		if ( ! empty( $album->yt_playlist_id ) ) {
+			if ( ! $youtube && adamson_archive_is_youtube_connected() ) {
+				$client = adamson_archive_get_google_client();
+				if ( ! is_wp_error( $client ) ) {
+					$youtube = new Google_Service_YouTube( $client );
+				}
+			}
+			if ( $youtube ) {
+				try {
+					$youtube->playlists->delete( $album->yt_playlist_id );
+				} catch ( Exception $e ) { }
+			}
+		}
+
+		// Delete local folder
+		if ( ! empty( $album->path ) && is_dir( $album->path ) ) {
+			adamson_archive_delete_directory( $album->path );
+		}
+
+		// Wipe DB records
+		$wpdb->delete( $table_media, array( 'album_id' => $album_id ) );
+		$wpdb->delete( $table_albums, array( 'id' => $album_id ) );
+		
+		$like_pattern = '%"album_id":' . $wpdb->esc_like( $album_id ) . '%';
+		$wpdb->query( $wpdb->prepare( "DELETE FROM $table_queue WHERE data LIKE %s", $like_pattern ) );
+
+		wp_send_json_success( array( 'message' => 'Album and all contents permanently deleted.' ) );
+
+	} catch ( Exception $e ) {
+		wp_send_json_error( array( 'message' => 'Error during permanent delete: ' . $e->getMessage() ) );
+	}
+}
+
+/**
+ * AJAX Handler: Restore a removed media item.
+ */
+function adamson_archive_ajax_restore_media_item() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+
+	$media_id = isset( $_POST['media_id'] ) ? intval( $_POST['media_id'] ) : 0;
+
+	if ( ! $media_id ) {
+		wp_send_json_error( array( 'message' => 'Invalid Media ID.' ) );
+	}
+
+	global $wpdb;
+	$table_media = 'adamson_archive_media';
+	
+	$media_item = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_media WHERE id = %d", $media_id ) );
+
+	if ( ! $media_item || 'video' === $media_item->file_type ) {
+		wp_send_json_error( array( 'message' => 'Only photos can be restored.' ) );
+	}
+
+	$updated = $wpdb->update(
+		$table_media,
+		array( 'is_removed' => 0 ),
+		array( 'id' => $media_id )
+	);
+
+	if ( false === $updated ) {
+		wp_send_json_error( array( 'message' => 'Failed to restore item.' ) );
+	}
+
+	wp_send_json_success( array( 'message' => 'Media item restored to gallery.' ) );
+}
+
+/**
+ * AJAX Handler: Restore an entire removed album.
+ */
+function adamson_archive_ajax_restore_album() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+
+	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
+
+	if ( ! $album_id ) {
+		wp_send_json_error( array( 'message' => 'Invalid Album ID.' ) );
+	}
+
+	global $wpdb;
+	$table_albums = 'adamson_archive_albums';
+	$table_media  = 'adamson_archive_media';
+
+	// Restore the album
+	$wpdb->update( $table_albums, array( 'is_removed' => 0 ), array( 'id' => $album_id ) );
+	
+	// Restore all media within that album
+	$wpdb->update( 
+		$table_media, 
+		array( 'is_removed' => 0 ), 
+		array( 
+			'album_id' => $album_id,
+			'file_type' => 'photo' // Only restore photos automatically; videos stay removed if they were deleted from YT
+		) 
+	);
+	
+	// Note: We don't restore videos because if they were deleted from YT, they are gone.
+
+	wp_send_json_success( array( 'message' => 'Album restored successfully.' ) );
 }
 
 /**
@@ -200,6 +395,7 @@ function adamson_archive_ajax_save_settings() {
  */
 function adamson_archive_ajax_get_dashboard_counts() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	adamson_archive_ensure_is_removed_column();
 
 	global $wpdb;
 	$table_queue = 'adamson_archive_queue';
@@ -277,6 +473,7 @@ function adamson_archive_ajax_get_pending_videos() {
  */
 function adamson_archive_ajax_scan_albums() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	adamson_archive_ensure_is_removed_column();
 
 	$albums    = adamson_archive_scan_album_directories();
 	$processed = 0;
@@ -336,6 +533,7 @@ function adamson_archive_ajax_load_albums() {
 	$table_albums = 'adamson_archive_albums';
 	$table_media = 'adamson_archive_media';
 	$table_queue  = 'adamson_archive_queue';
+	adamson_archive_ensure_is_removed_column();
 
 	// Get all pending items and count them by album_id in PHP
 	$pending_items = $wpdb->get_results( "SELECT data FROM $table_queue WHERE status = 'pending'" );
@@ -355,13 +553,15 @@ function adamson_archive_ajax_load_albums() {
 		$wpdb->prepare(
 			"SELECT 
 				a.*,
-				COUNT(m.id) AS media_count,
-				SUM(CASE WHEN m.file_type = 'photo' THEN 1 ELSE 0 END) AS photo_count,
-				SUM(CASE WHEN m.file_type = 'video' THEN 1 ELSE 0 END) AS video_count
+				SUM(CASE WHEN m.is_removed = 0 THEN 1 ELSE 0 END) AS media_count,
+				SUM(CASE WHEN m.file_type = 'photo' AND m.is_removed = 0 THEN 1 ELSE 0 END) AS photo_count,
+				SUM(CASE WHEN m.file_type = 'video' AND m.is_removed = 0 THEN 1 ELSE 0 END) AS video_count
 			FROM 
 				$table_albums AS a
 			LEFT JOIN 
 				$table_media AS m ON a.id = m.album_id
+			WHERE
+				a.is_removed = 0
 			GROUP BY 
 				a.id
 			ORDER BY 
@@ -377,7 +577,7 @@ function adamson_archive_ajax_load_albums() {
         $album->pending_video_count = isset( $pending_counts[ $album->id ] ) ? $pending_counts[ $album->id ] : 0;
     }
 
-	$total_albums = $wpdb->get_var( "SELECT COUNT(id) FROM $table_albums" );
+	$total_albums = $wpdb->get_var( "SELECT COUNT(id) FROM $table_albums WHERE is_removed = 0" );
 	$has_more     = ( $offset + $limit ) < $total_albums;
 
 	wp_send_json_success(
@@ -392,6 +592,9 @@ function adamson_archive_ajax_load_albums() {
  * Frontend: Get media for a specific album.
  */
 function adamson_archive_ajax_get_album_media() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	adamson_archive_ensure_is_removed_column();
+
 	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
 
 	if ( ! $album_id ) {
@@ -400,19 +603,25 @@ function adamson_archive_ajax_get_album_media() {
 
 	global $wpdb;
 	$table_media = 'adamson_archive_media';
+	$table_queue = 'adamson_archive_queue';
 
 	$media = $wpdb->get_results(
 		$wpdb->prepare(
-			"SELECT * FROM $table_media WHERE album_id = %d ORDER BY created_at ASC",
+			"SELECT * FROM $table_media WHERE album_id = %d AND is_removed = 0 ORDER BY created_at ASC",
 			$album_id
 		)
 	);
 
 	$counts = $wpdb->get_row( $wpdb->prepare( "SELECT 
 		COUNT(*) as total_media,
-		SUM(CASE WHEN file_type = 'photo' THEN 1 ELSE 0 END) as photo_count,
-		SUM(CASE WHEN file_type = 'video' THEN 1 ELSE 0 END) as video_count
-		FROM $table_media WHERE album_id = %d", $album_id ), ARRAY_A );
+		SUM(CASE WHEN file_type = 'photo' AND is_removed = 0 THEN 1 ELSE 0 END) as photo_count,
+		SUM(CASE WHEN file_type = 'video' AND is_removed = 0 THEN 1 ELSE 0 END) as video_count
+		FROM $table_media WHERE album_id = %d AND is_removed = 0", $album_id ), ARRAY_A );
+
+	// Get pending count for this specific album
+	$like_pattern = '%"album_id":' . $wpdb->esc_like( $album_id ) . '%';
+	$pending_count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(id) FROM $table_queue WHERE status = 'pending' AND data LIKE %s", $like_pattern ) );
+	$counts['pending_count'] = (int) $pending_count;
 
 	// Prepare URLs for local files and backfill YT data if needed.
 	$upload_dir = wp_upload_dir();
@@ -432,7 +641,7 @@ function adamson_archive_ajax_get_album_media() {
 				$item->yt_thumbnail_url = 'https://img.youtube.com/vi/' . $item->yt_video_id . '/hqdefault.jpg';
 			}
 			if ( empty( $item->yt_embed_html ) ) {
-				$item->yt_embed_html = '<iframe width="560" height="315" src="https://www.youtube.com/embed/' . $item->yt_video_id . '" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+				$item->yt_embed_html = '<iframe src="https://www.youtube.com/embed/' . $item->yt_video_id . '?autoplay=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
 			}
 		}
 	}
