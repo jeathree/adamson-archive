@@ -95,11 +95,29 @@
 			true // Load in footer
 		);
 
+		// Enqueue Isotope JS from CDN
+		wp_enqueue_script(
+			'isotope-script',
+			'https://cdnjs.cloudflare.com/ajax/libs/jquery.isotope/3.0.6/isotope.pkgd.min.js',
+			array( 'jquery' ),
+			'3.0.6',
+			true
+		);
+
+		// Enqueue imagesLoaded JS from CDN
+		wp_enqueue_script(
+			'imagesloaded-script',
+			'https://cdnjs.cloudflare.com/ajax/libs/jquery.imagesloaded/5.0.0/imagesloaded.pkgd.min.js',
+			array( 'jquery', 'isotope-script' ),
+			'5.0.0',
+			true
+		);
+
 		// Enqueue Script
 		wp_enqueue_script(
 			'adamson-archive-admin-script',
 			get_theme_file_uri( '/admin/js/dashboard.js' ),
-			array( 'jquery', 'toastr-script' ),
+			array( 'jquery', 'toastr-script', 'imagesloaded-script' ),
 			'1.0',
 			true // Load in footer
 		);

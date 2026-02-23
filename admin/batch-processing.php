@@ -145,7 +145,7 @@ function adamson_archive_process_next_queue_item( $disable_delete = false ) {
 		$video_snippet->setDescription( 'Uploaded from Adamson Archive.' );
 
 		$video_status = new Google_Service_YouTube_VideoStatus();
-		$video_status->setPrivacyStatus( 'private' );
+		$video_status->setPrivacyStatus( 'unlisted' );
 
 		$video = new Google_Service_YouTube_Video();
 		$video->setSnippet( $video_snippet );
@@ -196,7 +196,21 @@ function adamson_archive_process_next_queue_item( $disable_delete = false ) {
 		$youtube->playlistItems->insert( 'snippet', $playlist_item );
 
 		// 8. Success: Update Media Table, Delete Local File, Update Queue.
-		$wpdb->insert( $table_media, array( 'album_id' => $album->id, 'filename' => $data['filename'], 'file_path' => $data['file_path'], 'file_type' => 'video', 'yt_video_id' => $video_id ) );
+		$embed_html = '<iframe width="560" height="315" src="https://www.youtube.com/embed/' . $video_id . '" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+		$thumbnail_url = 'https://img.youtube.com/vi/' . $video_id . '/hqdefault.jpg';
+
+		$wpdb->insert(
+			$table_media,
+			array(
+				'album_id'         => $album->id,
+				'filename'         => $data['filename'],
+				'file_path'        => $data['file_path'],
+				'file_type'        => 'video',
+				'yt_video_id'      => $video_id,
+				'yt_thumbnail_url' => $thumbnail_url,
+				'yt_embed_html'    => $embed_html,
+			)
+		);
 		
 		// Delete local file (Hybrid Storage).
 		if ( ! $disable_delete ) {

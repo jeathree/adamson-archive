@@ -39,6 +39,8 @@ function adamson_archive_create_tables() {
 		file_path text NOT NULL,
 		file_type varchar(20) NOT NULL,
 		yt_video_id varchar(100) DEFAULT NULL,
+		yt_thumbnail_url text DEFAULT NULL,
+		yt_embed_html text DEFAULT NULL,
 		created_at datetime DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY  (id),
 		KEY album_id (album_id)

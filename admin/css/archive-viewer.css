@@ -1,23 +1,23 @@
 #adamson-archive-container {
-	max-width: 1200px;
 	margin: 0 auto;
+	max-width: 1200px;
 	padding: 20px;
 }
 
 .adamson-album {
 	border: 1px solid #ddd;
-	margin-bottom: 10px;
 	border-radius: 4px;
+	margin-bottom: 10px;
 	overflow: hidden;
 }
 
 .adamson-album-header {
 	background: #f9f9f9;
-	padding: 15px;
 	cursor: pointer;
 	display: flex;
-	justify-content: space-between;
 	font-weight: bold;
+	justify-content: space-between;
+	padding: 15px;
 }
 
 .adamson-album-header:hover {
@@ -25,26 +25,26 @@
 }
 
 .adamson-album-body {
-	padding: 15px;
 	background: #fff;
 	border-top: 1px solid #ddd;
+	padding: 15px;
 }
 
 .media-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 	gap: 10px;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 }
 
 .media-item img,
 .media-item video {
-	width: 100%;
-	height: auto;
-	display: block;
 	border-radius: 4px;
+	display: block;
+	height: auto;
+	width: 100%;
 }
 
 .adamson-archive-load-more-container {
-	text-align: center;
 	margin-top: 20px;
+	text-align: center;
 }

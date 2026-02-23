@@ -111,7 +111,7 @@ jQuery(document).ready(function($) {
 
 						const row = `<tr id="album-${album.id}" class="album-row">
 							<th scope="row" class="check-column">
-								<button type="button" class="toggle-row"><span class="screen-reader-text">Show more details</span></button>
+								<button type="button" class="toggle-row" title="Show more details"><span class="screen-reader-text">Show more details</span></button>
 							</th>
 							<td class="album-name"><strong>${album.display_name}</strong></td>
 							<td>${album.album_date}</td>
@@ -144,12 +144,22 @@ jQuery(document).ready(function($) {
 		loadAlbums();
 	});
 
-	$albumList.on('click', '.toggle-row', function(e) {
+	$albumList.on('click', '.album-row', function(e) {
+		// If the click was on a link, button, or input, don't toggle the row.
+		if ($(e.target).is('a, a *, button, button *, input')) {
+			return;
+		}
+
 		e.preventDefault();
-		const $row = $(this).closest('tr');
+		const $row = $(this);
 		const albumId = $row.attr('id').replace('album-', '');
 
 		if ($row.hasClass('is-expanded')) {
+			// Destroy Isotope instance before removing the row
+			const $mediaContainer = $row.next('.media-row').find('.media-container');
+			if ($mediaContainer.data('isotope')) {
+				$mediaContainer.isotope('destroy');
+			}
 			$row.removeClass('is-expanded');
 			$row.next('.media-row').remove();
 		} else {
@@ -170,22 +180,132 @@ jQuery(document).ready(function($) {
 						const total_media = counts.total_media || 0;
 
 						mediaHtml += `<div class="media-summary">Total: ${total_media} (Images: ${photo_count}, Videos: ${video_count})</div>`;
-						mediaHtml += '<div class="media-container">';
+						mediaHtml += `<div class="media-container">`;
 
 						response.data.media.forEach(function(media) {
-							mediaHtml += `<div class="media-item">
-								<img src="${media.file_url}" alt="${media.filename}" />
-								<p>${media.filename}</p>
+							let item_html = '';
+							if (media.file_type === 'photo') {
+								item_html = `<img src="${media.file_url}" alt="${media.filename}" />`;
+							} else if (media.file_type === 'video') {
+								item_html = `
+									<img src="${media.yt_thumbnail_url}" alt="${media.filename}" />
+									<div class="play-button"></div>
+								`;
+							}
+
+							mediaHtml += `<div class="media-item" data-media-id="${media.id}" data-file-type="${media.file_type}" data-embed-html="${encodeURIComponent(media.yt_embed_html || '')}">
+								<div class="media-item-wrapper">
+									${item_html}
+									<p>${media.filename}</p>
+								</div>
+								<button class="button-link-delete delete-media-item" data-media-id="${media.id}">
+									<span class="dashicons dashicons-trash"></span>
+								</button>
 							</div>`;
 						});
-						mediaHtml += '</div></td></tr>';
+						mediaHtml += '</div>'; // End media-container
+
+						mediaHtml += `<div class="album-actions">
+							<button class="button button-link-delete delete-album-link" data-album-id="${albumId}">
+								Delete Entire Album
+							</button>
+						</div>`;
+
+						mediaHtml += '</td></tr>';
 						$row.after(mediaHtml);
+
+						// Initialize Isotope after images are loaded
+						const $mediaContainer = $row.next('.media-row').find('.media-container');
+						$mediaContainer.imagesLoaded(function() {
+							$mediaContainer.isotope({
+								itemSelector: '.media-item',
+								layoutMode: 'masonry',
+								percentPosition: true,
+							});
+						});
+
 					} else {
 						log('Error: ' + response.data.message, 'error');
 					}
 				},
 				error: function() {
 					log('Server error while loading media.', 'error');
+				}
+			});
+		}
+	});
+
+	$albumList.on('click', '.media-item', function(e) {
+		const $item = $(this);
+		if ($item.data('file-type') !== 'video' || $item.hasClass('is-playing')) {
+			return;
+		}
+
+		// Prevent the row from toggling if the click is on a media item
+		e.stopPropagation();
+
+		const embedHtml = decodeURIComponent($item.data('embed-html'));
+		if (embedHtml) {
+			$item.addClass('is-playing');
+			$item.find('.media-item-wrapper').html(embedHtml);
+		}
+	});
+
+	$albumList.on('click', '.delete-album-link', function(e) {
+		e.preventDefault();
+		const $btn = $(this);
+		const albumId = $btn.data('album-id');
+
+		if (confirm('Are you sure you want to delete this entire album? This will delete all local files and all associated YouTube videos and playlists. This action cannot be undone.')) {
+			$.ajax({
+				url: adamsonArchive.ajax_url,
+				type: 'POST',
+				data: {
+					action: 'adamson_archive_delete_album',
+					nonce: adamsonArchive.nonce,
+					album_id: albumId
+				},
+				success: function(response) {
+					if (response.success) {
+						log(response.data.message, 'success');
+						$('#album-' + albumId).next('.media-row').remove();
+						$('#album-' + albumId).remove();
+					} else {
+						logError('Error deleting album.', response.data.message);
+					}
+				},
+				error: function() {
+					logError('Error deleting album.', 'A server error occurred.');
+				}
+			});
+		}
+	});
+
+	$albumList.on('click', '.delete-media-item', function(e) {
+		e.preventDefault();
+		const $btn = $(this);
+		const mediaId = $btn.data('media-id');
+
+		if (confirm('Are you sure you want to delete this media item? This action cannot be undone.')) {
+			$.ajax({
+				url: adamsonArchive.ajax_url,
+				type: 'POST',
+				data: {
+					action: 'adamson_archive_delete_media_item',
+					nonce: adamsonArchive.nonce,
+					media_id: mediaId
+				},
+				success: function(response) {
+					if (response.success) {
+						log(response.data.message, 'success');
+						const $itemToRemove = $btn.closest('.media-item');
+						$itemToRemove.closest('.media-container').isotope('remove', $itemToRemove).isotope('layout');
+					} else {
+						logError('Error deleting media.', response.data.message);
+					}
+				},
+				error: function() {
+					logError('Error deleting media.', 'A server error occurred.');
 				}
 			});
 		}

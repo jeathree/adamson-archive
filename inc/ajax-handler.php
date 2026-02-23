@@ -20,6 +20,166 @@ add_action( 'wp_ajax_adamson_archive_delete_all_media', 'adamson_archive_ajax_de
 add_action( 'wp_ajax_adamson_archive_get_dashboard_counts', 'adamson_archive_ajax_get_dashboard_counts' );
 add_action( 'wp_ajax_adamson_archive_get_pending_videos', 'adamson_archive_ajax_get_pending_videos' );
 add_action( 'wp_ajax_adamson_archive_save_settings', 'adamson_archive_ajax_save_settings' );
+add_action( 'wp_ajax_adamson_archive_delete_media_item', 'adamson_archive_ajax_delete_media_item' );
+add_action( 'wp_ajax_adamson_archive_delete_album', 'adamson_archive_ajax_delete_album' );
+
+/**
+ * AJAX Handler: Delete an entire album and all its contents.
+ */
+function adamson_archive_ajax_delete_album() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+
+	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
+
+	if ( ! $album_id ) {
+		wp_send_json_error( array( 'message' => 'Invalid Album ID.' ) );
+	}
+
+	global $wpdb;
+	$table_albums = 'adamson_archive_albums';
+	$table_media  = 'adamson_archive_media';
+	$table_queue  = 'adamson_archive_queue';
+
+	$album = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_albums WHERE id = %d", $album_id ) );
+
+	if ( ! $album ) {
+		wp_send_json_error( array( 'message' => 'Album not found.' ) );
+	}
+
+	try {
+		// 1. Delete all media items associated with the album
+		$media_items = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM $table_media WHERE album_id = %d", $album_id ) );
+		$youtube     = null;
+
+		foreach ( $media_items as $media_item ) {
+			if ( 'photo' === $media_item->file_type ) {
+				if ( file_exists( $media_item->file_path ) ) {
+					@unlink( $media_item->file_path );
+				}
+			} elseif ( 'video' === $media_item->file_type && ! empty( $media_item->yt_video_id ) ) {
+				if ( ! $youtube ) {
+					if ( ! adamson_archive_is_youtube_connected() ) {
+						throw new Exception( 'YouTube account is not connected.' );
+					}
+					$client = adamson_archive_get_google_client();
+					if ( is_wp_error( $client ) ) {
+						throw new Exception( 'Could not connect to YouTube: ' . $client->get_error_message() );
+					}
+					$youtube = new Google_Service_YouTube( $client );
+				}
+				$youtube->videos->delete( $media_item->yt_video_id );
+			}
+		}
+
+		// 2. Delete the YouTube playlist
+		if ( ! empty( $album->yt_playlist_id ) ) {
+			if ( ! $youtube ) {
+				if ( ! adamson_archive_is_youtube_connected() ) {
+					throw new Exception( 'YouTube account is not connected.' );
+				}
+				$client = adamson_archive_get_google_client();
+				if ( is_wp_error( $client ) ) {
+					throw new Exception( 'Could not connect to YouTube: ' . $client->get_error_message() );
+				}
+				$youtube = new Google_Service_YouTube( $client );
+			}
+			$youtube->playlists->delete( $album->yt_playlist_id );
+		}
+
+		// 3. Delete the local album folder
+		if ( ! empty( $album->path ) && is_dir( $album->path ) ) {
+			adamson_archive_delete_directory( $album->path );
+		}
+
+		// 4. Delete from media table
+		$wpdb->delete( $table_media, array( 'album_id' => $album_id ) );
+
+		// 5. Delete from queue table (based on album_id in data)
+		$like_pattern = '%"album_id":' . $wpdb->esc_like( $album_id ) . '%';
+		$wpdb->query( $wpdb->prepare( "DELETE FROM $table_queue WHERE data LIKE %s", $like_pattern ) );
+
+		// 6. Delete from albums table
+		$wpdb->delete( $table_albums, array( 'id' => $album_id ) );
+
+		wp_send_json_success( array( 'message' => 'Album deleted successfully.' ) );
+
+	} catch ( Exception $e ) {
+		wp_send_json_error( array( 'message' => 'Error deleting album: ' . $e->getMessage() ) );
+	}
+}
+
+/**
+ * Recursively delete a directory.
+ *
+ * @param string $dir Directory path.
+ * @return bool
+ */
+function adamson_archive_delete_directory( $dir ) {
+	if ( ! file_exists( $dir ) ) {
+		return true;
+	}
+	if ( ! is_dir( $dir ) ) {
+		return unlink( $dir );
+	}
+	foreach ( scandir( $dir ) as $item ) {
+		if ( '.' === $item || '..' === $item ) {
+			continue;
+		}
+		if ( ! adamson_archive_delete_directory( $dir . DIRECTORY_SEPARATOR . $item ) ) {
+			return false;
+		}
+	}
+	return rmdir( $dir );
+}
+
+/**
+ * AJAX Handler: Delete a single media item.
+ */
+function adamson_archive_ajax_delete_media_item() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+
+	$media_id = isset( $_POST['media_id'] ) ? intval( $_POST['media_id'] ) : 0;
+
+	if ( ! $media_id ) {
+		wp_send_json_error( array( 'message' => 'Invalid Media ID.' ) );
+	}
+
+	global $wpdb;
+	$table_media = 'adamson_archive_media';
+	$media_item  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_media WHERE id = %d", $media_id ) );
+
+	if ( ! $media_item ) {
+		wp_send_json_error( array( 'message' => 'Media item not found.' ) );
+	}
+
+	try {
+		if ( 'photo' === $media_item->file_type ) {
+			// Delete local photo file
+			if ( file_exists( $media_item->file_path ) ) {
+				@unlink( $media_item->file_path );
+			}
+		} elseif ( 'video' === $media_item->file_type && ! empty( $media_item->yt_video_id ) ) {
+			// Delete YouTube video
+			if ( ! adamson_archive_is_youtube_connected() ) {
+				wp_send_json_error( array( 'message' => 'YouTube account is not connected.' ) );
+			}
+			$client = adamson_archive_get_google_client();
+			if ( is_wp_error( $client ) ) {
+				wp_send_json_error( array( 'message' => 'Could not connect to YouTube: ' . $client->get_error_message() ) );
+			}
+			$youtube = new Google_Service_YouTube( $client );
+			$youtube->videos->delete( $media_item->yt_video_id );
+		}
+
+		// Delete the media record from the database
+		$wpdb->delete( $table_media, array( 'id' => $media_id ) );
+
+		wp_send_json_success( array( 'message' => 'Media item deleted successfully.' ) );
+
+	} catch ( Exception $e ) {
+		wp_send_json_error( array( 'message' => 'Error deleting media item: ' . $e->getMessage() ) );
+	}
+}
 
 /**
  * AJAX Handler: Save admin settings.
@@ -254,23 +414,27 @@ function adamson_archive_ajax_get_album_media() {
 		SUM(CASE WHEN file_type = 'video' THEN 1 ELSE 0 END) as video_count
 		FROM $table_media WHERE album_id = %d", $album_id ), ARRAY_A );
 
-	// Prepare URLs for local files.
+	// Prepare URLs for local files and backfill YT data if needed.
 	$upload_dir = wp_upload_dir();
-	$base_url   = $upload_dir['baseurl'] . '/albums';
 
 	foreach ( $media as $item ) {
-		// We need to construct the public URL. 
-		// Note: This assumes the file_path stored in DB is the absolute server path.
-		// We need to convert it to a URL.
-		// A robust way is to store relative paths, but for now we can do a string replace if needed,
-		// or rely on the fact that we know the structure is /uploads/albums/{folder}/{file}.
-		
-		// Get relative path from 'uploads'
-		// Normalize paths to handle Windows backslashes correctly.
-		$file_path_norm = wp_normalize_path( $item->file_path );
-		$base_dir_norm  = wp_normalize_path( $upload_dir['basedir'] );
-		$relative_path  = str_replace( $base_dir_norm, '', $file_path_norm );
-		$item->file_url = $upload_dir['baseurl'] . $relative_path;
+		// 1. Construct the public URL for photos
+		if ( 'photo' === $item->file_type ) {
+			$file_path_norm = wp_normalize_path( $item->file_path );
+			$base_dir_norm  = wp_normalize_path( $upload_dir['basedir'] );
+			$relative_path  = str_replace( $base_dir_norm, '', $file_path_norm );
+			$item->file_url = $upload_dir['baseurl'] . $relative_path;
+		}
+
+		// 2. Backfill YouTube data for older records if missing
+		if ( 'video' === $item->file_type && ! empty( $item->yt_video_id ) ) {
+			if ( empty( $item->yt_thumbnail_url ) ) {
+				$item->yt_thumbnail_url = 'https://img.youtube.com/vi/' . $item->yt_video_id . '/hqdefault.jpg';
+			}
+			if ( empty( $item->yt_embed_html ) ) {
+				$item->yt_embed_html = '<iframe width="560" height="315" src="https://www.youtube.com/embed/' . $item->yt_video_id . '" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+			}
+		}
 	}
 
 	wp_send_json_success( array( 
