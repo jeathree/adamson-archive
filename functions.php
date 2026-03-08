@@ -9,6 +9,11 @@
 		require_once get_theme_file_path( '/vendor/autoload.php' );
 	}
 
+	// Manually load Action Scheduler if bundled in the theme (alternative to plugin)
+	if ( file_exists( get_theme_file_path( '/action-scheduler/action-scheduler.php' ) ) ) {
+		require_once get_theme_file_path( '/action-scheduler/action-scheduler.php' );
+	}
+
 	// Include core files.
 	require_once get_theme_file_path( '/admin/dashboard-page.php' );
 	require_once get_theme_file_path( '/inc/ajax-handler.php' );

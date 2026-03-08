@@ -103,7 +103,7 @@ jQuery(document).ready(function($) {
 			success: function(response) {
 				if (response.success) {
 					const pendingCount = parseInt(response.data.pending_videos, 10);
-					const totalPending = parseInt(response.data.total_pending, 10) || 0;
+					const totalPending = parseInt(response.data.total_pending, 10);
 
 					// Apply highlight if the count has changed
 					if (parseInt($queueCount.text()) !== pendingCount) {
@@ -111,8 +111,6 @@ jQuery(document).ready(function($) {
 						setTimeout(() => { 
 							$queueCount.parent().css('transition', 'background-color 2s').css('background-color', ''); 
 						}, 2000);
-					} else {
-						$queueCount.text(pendingCount);
 					}
 
 					// Initialize lastProcessedId so we don't toast old messages on page load
@@ -400,6 +398,12 @@ jQuery(document).ready(function($) {
 			success: function(response) {
 				if (response.success) {
 					log(response.data.message, 'success');
+					
+					// Refresh the album list immediately so newly discovered albums appear right away.
+					$albumList.empty();
+					currentPage = 1;
+					loadAlbums();
+
 					pollQueueStatus(); // Start polling immediately to show scan progress
 				} else {
 					log('Error: ' + response.data.message, 'error');
@@ -449,7 +453,7 @@ jQuery(document).ready(function($) {
 			success: function(response) {
 				if (response.success) {
 					const remaining = parseInt(response.data.pending_videos);
-					const totalPending = parseInt(response.data.total_pending) || 0;
+					const totalPending = parseInt(response.data.total_pending, 10) || 0;
 
 					// Apply highlight if the count has changed
 					if (parseInt($queueCount.text()) !== remaining) {

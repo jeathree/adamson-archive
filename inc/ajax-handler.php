@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 add_action( 'wp_ajax_adamson_archive_scan_albums', 'adamson_archive_ajax_scan_albums' );
 add_action( 'wp_ajax_adamson_archive_process_album', 'adamson_archive_ajax_process_album' );
-add_action( 'wp_ajax_adamson_archive_process_queue_item', 'adamson_archive_ajax_process_queue_item' );
+add_action( 'wp_ajax_adamson_archive_start_queue_worker', 'adamson_archive_ajax_start_queue_worker' );
 add_action( 'wp_ajax_adamson_archive_load_albums', 'adamson_archive_ajax_load_albums' );
 add_action( 'wp_ajax_adamson_archive_get_album_media', 'adamson_archive_ajax_get_album_media' );
 add_action( 'wp_ajax_adamson_archive_delete_all_media', 'adamson_archive_ajax_delete_all_media' );
@@ -20,14 +20,20 @@ add_action( 'wp_ajax_adamson_archive_get_pending_videos', 'adamson_archive_ajax_
 add_action( 'wp_ajax_adamson_archive_save_settings', 'adamson_archive_ajax_save_settings' );
 add_action( 'wp_ajax_adamson_archive_delete_media_item', 'adamson_archive_ajax_delete_media_item' );
 add_action( 'wp_ajax_adamson_archive_delete_album', 'adamson_archive_ajax_delete_album' );
+add_action( 'wp_ajax_adamson_archive_get_album_details', 'adamson_archive_ajax_get_album_details' );
 
 /**
  * Helper: Ensure required database columns exist.
  */
 function adamson_archive_ensure_is_removed_column() {
+	if ( false !== get_transient( 'adamson_archive_db_verified' ) ) {
+		return;
+	}
+
 	global $wpdb;
 	$table_albums = 'adamson_archive_albums';
 	$table_media  = 'adamson_archive_media';
+	$table_queue  = 'adamson_archive_queue';
 
 	// Ensure is_removed exists on both tables
 	foreach ( array( $table_albums, $table_media ) as $table ) {
@@ -42,6 +48,19 @@ function adamson_archive_ensure_is_removed_column() {
 	if ( ! $has_playlist_col ) {
 		$wpdb->query( "ALTER TABLE $table_albums ADD COLUMN yt_playlist_id VARCHAR(255) DEFAULT NULL" );
 	}
+
+	// Ensure album_id exists on queue table for accurate, high-speed lookups
+	$has_queue_album_col = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM $table_queue LIKE %s", 'album_id' ) );
+	if ( ! $has_queue_album_col ) {
+		$wpdb->query( "ALTER TABLE $table_queue ADD COLUMN album_id BIGINT(20) UNSIGNED DEFAULT NULL, ADD INDEX (album_id)" );
+	}
+
+	// Ensure file_hash is indexed for high-speed duplicate checking
+	$wpdb->query( "ALTER TABLE $table_queue MODIFY COLUMN file_hash VARCHAR(32), ADD INDEX IF NOT EXISTS (file_hash)" );
+	$wpdb->query( "ALTER TABLE $table_media ADD INDEX IF NOT EXISTS (filename)" );
+
+	// Cache verification for 24 hours
+	set_transient( 'adamson_archive_db_verified', time(), DAY_IN_SECONDS );
 }
 
 /**
@@ -86,6 +105,9 @@ function adamson_archive_ajax_delete_album() {
 		// Soft delete: Mark album and all its media as removed.
 		$wpdb->update( $table_albums, array( 'is_removed' => 1 ), array( 'id' => $album_id ) );
 		$wpdb->update( $table_media, array( 'is_removed' => 1 ), array( 'album_id' => $album_id ) );
+
+		// Also cancel any pending background tasks for this album
+		$wpdb->update( $table_queue, array( 'status' => 'cancelled' ), array( 'album_id' => $album_id, 'status' => 'pending' ) );
 
 		wp_send_json_success( array( 'message' => 'Album and its media moved to removed list.' ) );
 
@@ -303,6 +325,7 @@ function adamson_archive_ajax_permanent_delete_album() {
 		
 		$like_pattern = '%"album_id":' . $wpdb->esc_like( $album_id ) . '%';
 		$wpdb->query( $wpdb->prepare( "DELETE FROM $table_queue WHERE data LIKE %s", $like_pattern ) );
+		$wpdb->delete( $table_queue, array( 'album_id' => $album_id ) );
 
 		wp_send_json_success( array( 'message' => 'Album and all contents permanently deleted.' ) );
 
@@ -408,13 +431,76 @@ function adamson_archive_ajax_get_dashboard_counts() {
 	global $wpdb;
 	$table_queue = 'adamson_archive_queue';
 
-	$pending_videos = (int) $wpdb->get_var( "SELECT COUNT(id) FROM $table_queue WHERE status = 'pending'" );
+	$pending_videos = (int) $wpdb->get_var( "SELECT COUNT(id) FROM $table_queue WHERE status = 'pending' AND task_type = 'upload_video'" );
+	$total_tasks    = (int) $wpdb->get_var( "SELECT COUNT(id) FROM $table_queue WHERE status = 'pending'" );
+	
+	// Fetch the last 5 completed items to update the activity log and UI via polling.
+	$recent_items = $wpdb->get_results( "SELECT id, message, data, task_type FROM $table_queue WHERE status = 'completed' ORDER BY id DESC LIMIT 20" );
+	$recent_messages = array();
+
+	foreach ( $recent_items as $item ) {
+		$item_data = json_decode( $item->data, true );
+		$recent_messages[] = array(
+			'id'       => (int) $item->id,
+			'message'  => $item->message,
+			'album_id' => isset( $item_data['album_id'] ) ? (int) $item_data['album_id'] : 0,
+			'type'     => $item->task_type,
+		);
+	}
 
 	wp_send_json_success(
 		array(
-			'pending_videos' => $pending_videos,
+			'pending_videos'  => $pending_videos,
+			'total_pending'   => $total_tasks,
+			'recent_messages' => $recent_messages,
+			'worker_active'   => (
+				( function_exists( 'as_next_scheduled_action' ) &&
+				  ( false !== as_next_scheduled_action( 'adamson_archive_run_queue' ) || false !== as_next_scheduled_action( 'adamson_archive_run_scan' ) )
+				) || $total_tasks > 0
+			),
 		)
 	);
+}
+
+/**
+ * AJAX Handler: Get full details for a single album (used for real-time UI injection).
+ */
+function adamson_archive_ajax_get_album_details() {
+	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	
+	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
+	if ( ! $album_id ) {
+		wp_send_json_error( array( 'message' => 'Invalid Album ID' ) );
+	}
+
+	global $wpdb;
+	$table_albums = 'adamson_archive_albums';
+	$table_media  = 'adamson_archive_media';
+	$table_queue  = 'adamson_archive_queue';
+
+	$album = $wpdb->get_row( $wpdb->prepare( "
+		SELECT 
+			a.*,
+			SUM(CASE WHEN m.file_type = 'photo' AND m.is_removed = 0 THEN 1 ELSE 0 END) AS photo_count,
+			SUM(CASE WHEN m.file_type = 'video' AND m.is_removed = 0 THEN 1 ELSE 0 END) AS video_count
+		FROM $table_albums a
+		LEFT JOIN $table_media m ON a.id = m.album_id
+		WHERE a.id = %d
+		GROUP BY a.id
+	", $album_id ) );
+
+	if ( ! $album ) {
+		wp_send_json_error( array( 'message' => 'Album not found' ) );
+	}
+
+	// Add pending count
+	$album->pending_video_count = (int) $wpdb->get_var( $wpdb->prepare( "
+		SELECT COUNT(id) 
+		FROM $table_queue 
+		WHERE status = 'pending' AND album_id = %d AND task_type = 'upload_video'
+	", $album_id ) );
+
+	wp_send_json_success( array( 'album' => $album ) );
 }
 
 /**
@@ -483,24 +569,32 @@ function adamson_archive_ajax_scan_albums() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
 	adamson_archive_ensure_is_removed_column();
 
+	if ( ! function_exists( 'as_enqueue_async_action' ) ) {
+		wp_send_json_error( array( 'message' => 'Background processing library not found. Please ensure the Action Scheduler files are in the theme directory.' ) );
+	}
+
 	$albums    = adamson_archive_scan_album_directories();
-	$processed = 0;
-	$album_ids = array();
 
 	global $wpdb;
 	$table_albums = 'adamson_archive_albums';
+	$table_queue  = 'adamson_archive_queue';
+
+	// Optimization: Fetch existing albums and pending tasks in bulk to avoid O(N) queries in the loop.
+	$existing_albums = $wpdb->get_results( "SELECT folder_name, id FROM $table_albums", OBJECT_K );
+	$pending_scans   = $wpdb->get_col( "SELECT album_id FROM $table_queue WHERE task_type = 'scan_album' AND status = 'pending'" );
+	$pending_scans   = array_flip( $pending_scans );
 
 	foreach ( $albums as $album ) {
-		// Check if album exists by folder name.
-		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM $table_albums WHERE folder_name = %s", $album['source_name'] ) );
+		$folder_name = $album['source_name'];
+		$album_id    = 0;
 
-		if ( $existing ) {
-			$album_id = $existing->id;
+		if ( isset( $existing_albums[ $folder_name ] ) ) {
+			$album_id = (int) $existing_albums[ $folder_name ]->id;
 		} else {
 			$wpdb->insert(
 				$table_albums,
 				array(
-					'folder_name'  => $album['source_name'],
+					'folder_name'  => $folder_name,
 					'display_name' => $album['album_name'],
 					'album_date'   => $album['album_date'],
 					'path'         => $album['path'],
@@ -509,23 +603,55 @@ function adamson_archive_ajax_scan_albums() {
 			$album_id = $wpdb->insert_id;
 		}
 
-		if ( $album_id ) {
-			$album_ids[] = array(
-				'id'   => $album_id,
-				'path' => $album['path'],
-				'name' => $album['source_name'],
-			);
-			$processed++;
+		if ( $album_id && ! isset( $pending_scans[ $album_id ] ) ) {
+			// Enqueue the album for background processing if not already in queue
+				$wpdb->insert( $table_queue, array(
+					'album_id'  => $album_id,
+					'task_type' => 'scan_album',
+					'status'    => 'pending',
+					'data'      => json_encode( array( 'album_id' => $album_id, 'name' => $folder_name ) )
+				) );
+			}
+		}
+
+	// Start the Action Scheduler worker for scanning
+	if ( function_exists( 'as_next_scheduled_action' ) ) {
+		if ( false === as_next_scheduled_action( 'adamson_archive_run_scan' ) ) {
+			as_enqueue_async_action( 'adamson_archive_run_scan' );
 		}
 	}
 
-	wp_send_json_success(
-		array(
-			'message' => "Found {$processed} albums.",
-			'albums'  => $album_ids,
-		)
-	);
+	wp_send_json_success( array( 'message' => 'Library scan initiated in the background.' ) );
 }
+
+/**
+ * Action Scheduler Callback: Process album scans in the background.
+ */
+function adamson_archive_as_run_scan_worker() {
+	global $wpdb;
+	$table_queue = 'adamson_archive_queue';
+
+	// Process up to 10 albums per run to make small scans feel instant
+	for ( $i = 0; $i < 10; $i++ ) {
+		$item = $wpdb->get_row( "SELECT * FROM $table_queue WHERE task_type = 'scan_album' AND status = 'pending' LIMIT 1" );
+		if ( ! $item ) break;
+
+		$result = adamson_archive_process_album_internal( $item->album_id );
+		
+		$message = isset( $result['message'] ) ? $result['message'] : "Processed album ID: {$item->album_id}";
+		if ( isset( $result['count'] ) && $result['count'] > 0 ) {
+			$message .= " (Found {$result['count']} new items)";
+		}
+
+		$wpdb->update( $table_queue, array( 'status' => 'completed', 'message' => $message ), array( 'id' => $item->id ) );
+	}
+
+	// Schedule next if more exist
+	if ( function_exists( 'as_enqueue_async_action' ) ) {
+		as_enqueue_async_action( 'adamson_archive_run_scan' );
+	}
+}
+add_action( 'adamson_archive_run_scan', 'adamson_archive_as_run_scan_worker' );
 
 /**
  * Frontend: Load paginated albums.
@@ -543,19 +669,11 @@ function adamson_archive_ajax_load_albums() {
 	$table_queue  = 'adamson_archive_queue';
 	adamson_archive_ensure_is_removed_column();
 
-	// Get all pending items and count them by album_id in PHP
-	$pending_items = $wpdb->get_results( "SELECT data FROM $table_queue WHERE status = 'pending'" );
-	$pending_counts = array();
-	foreach ( $pending_items as $item ) {
-		$data = json_decode( $item->data, true );
-		if ( ! empty( $data['album_id'] ) ) {
-			$album_id = (int) $data['album_id'];
-			if ( ! isset( $pending_counts[ $album_id ] ) ) {
-				$pending_counts[ $album_id ] = 0;
-			}
-			$pending_counts[ $album_id ]++;
-		}
-	}
+	// Get pending counts efficiently via SQL GROUP BY
+	$pending_results = $wpdb->get_results( 
+		"SELECT album_id, COUNT(id) as count FROM $table_queue WHERE status = 'pending' AND task_type = 'upload_video' GROUP BY album_id", 
+		OBJECT_K 
+	);
 
 	$albums = $wpdb->get_results(
 		$wpdb->prepare(
@@ -582,7 +700,7 @@ function adamson_archive_ajax_load_albums() {
 
 	// Add pending counts to the album objects
     foreach( $albums as $album ) {
-        $album->pending_video_count = isset( $pending_counts[ $album->id ] ) ? $pending_counts[ $album->id ] : 0;
+        $album->pending_video_count = isset( $pending_results[ $album->id ] ) ? (int) $pending_results[ $album->id ]->count : 0;
     }
 
 	$total_albums = $wpdb->get_var( "SELECT COUNT(id) FROM $table_albums WHERE is_removed = 0" );
@@ -627,9 +745,7 @@ function adamson_archive_ajax_get_album_media() {
 		FROM $table_media WHERE album_id = %d AND is_removed = 0", $album_id ), ARRAY_A );
 
 	// Get pending count for this specific album
-	$like_pattern = '%"album_id":' . $wpdb->esc_like( $album_id ) . '%';
-	$pending_count = $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(id) FROM $table_queue WHERE status = 'pending' AND data LIKE %s", $like_pattern ) );
-	$counts['pending_count'] = (int) $pending_count;
+	$counts['pending_count'] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(id) FROM $table_queue WHERE status = 'pending' AND album_id = %d AND task_type = 'upload_video'", $album_id ) );
 
 	// Prepare URLs for local files and backfill YT data if needed.
 	$upload_dir = wp_upload_dir();
@@ -665,10 +781,21 @@ function adamson_archive_ajax_get_album_media() {
  */
 function adamson_archive_ajax_process_album() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
+	$album_id = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
+	
+	$result = adamson_archive_process_album_internal( $album_id );
+	
+	if ( isset( $result['error'] ) ) {
+		wp_send_json_error( array( 'message' => $result['error'] ) );
+	}
+	
+	wp_send_json_success( $result );
+}
 
-	$album_id   = isset( $_POST['album_id'] ) ? intval( $_POST['album_id'] ) : 0;
-	$notices    = array();
-
+/**
+ * Internal Helper: Core logic for scanning an album folder.
+ */
+function adamson_archive_process_album_internal( $album_id ) {
 	global $wpdb;
 	$table_albums = 'adamson_archive_albums';
 	$table_media  = 'adamson_archive_media';
@@ -684,12 +811,21 @@ function adamson_archive_ajax_process_album() {
 	$album_path = $wpdb->get_var( $wpdb->prepare( "SELECT path FROM $table_albums WHERE id = %d", $album_id ) );
 
 	if ( ! $album_id || ! $album_path || ! is_dir( $album_path ) ) {
-		wp_send_json_error( array( 'message' => 'Invalid album data.' ) );
+		return array( 'error' => 'Invalid album data.' );
 	}
 
 	$files       = new DirectoryIterator( $album_path );
 	$allowed_ext = array( 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'mov', 'mp4', 'avi', 'mkv' );
 	$count       = 0;
+	$notices     = array();
+
+	// Optimization: Fetch all existing filenames and hashes for this album in bulk
+	$existing_media = $wpdb->get_col( $wpdb->prepare( "SELECT filename FROM $table_media WHERE album_id = %d", $album_id ) );
+	$existing_media = array_flip( $existing_media );
+
+	$existing_queue = $wpdb->get_col( $wpdb->prepare( "SELECT file_hash FROM $table_queue WHERE album_id = %d AND task_type = 'upload_video'", $album_id ) );
+	$existing_queue = array_flip( $existing_queue );
+
 
 	foreach ( $files as $fileinfo ) {
 		if ( $fileinfo->isFile() && ! $fileinfo->isDot() ) {
@@ -700,9 +836,8 @@ function adamson_archive_ajax_process_album() {
 				$type      = in_array( $ext, array( 'mov', 'mp4', 'avi', 'mkv' ), true ) ? 'video' : 'photo';
 
 				if ( 'photo' === $type ) {
-					// For photos, check if it's already in the main media table.
-					$media_exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $table_media WHERE album_id = %d AND filename = %s", $album_id, $filename ) );
-					if ( ! $media_exists ) {
+					// Bulk check against our flipped array
+					if ( ! isset( $existing_media[ $filename ] ) ) {
 						// If it doesn't exist, insert it.
 						$wpdb->insert(
 							$table_media,
@@ -717,12 +852,11 @@ function adamson_archive_ajax_process_album() {
 					}
 				} elseif ( 'video' === $type ) {
 					$is_duplicate = false;
+					$file_hash    = md5( $file_path );
 
 					// Check if the file is already in the queue.
 					if ( $hash_column_exists ) {
-						// Method 1: Check by hash (preferred, most reliable, and performant).
-						$file_hash    = md5( $file_path );
-						$is_duplicate = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $table_queue WHERE file_hash = %s", $file_hash ) );
+						$is_duplicate = isset( $existing_queue[ $file_hash ] );
 					} else {
 						// Method 2: Fallback for older schemas. Check for the file path in the JSON data.
 						$json_substring = '"file_path":' . wp_json_encode( $file_path );
@@ -732,13 +866,14 @@ function adamson_archive_ajax_process_album() {
 					}
 
 					// As a final check, see if this video has already been fully processed and added to the media table.
-					if ( ! $is_duplicate ) {
-						$is_duplicate = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $table_media WHERE file_path = %s", $file_path ) );
+					if ( ! $is_duplicate && isset( $existing_media[ $filename ] ) ) {
+						$is_duplicate = true;
 					}
 
 					// Only insert into queue if it doesn't already exist.
 					if ( ! $is_duplicate ) {
 						$insert_data = array(
+							'album_id'  => $album_id,
 							'task_type' => 'upload_video',
 							'data'      => json_encode(
 								array(
@@ -760,30 +895,56 @@ function adamson_archive_ajax_process_album() {
 		}
 	}
 
-	wp_send_json_success(
-		array(
-			'message' => "Processed album. Added {$count} new files.",
-			'count'   => $count,
-			'notices' => array_unique( $notices ),
-		)
+	return array(
+		'message' => "Processed album. Added {$count} new files.",
+		'count'   => $count,
+		'notices' => array_unique( $notices ),
 	);
 }
 
 /**
- * AJAX Handler: Process the next item in the queue.
+ * AJAX Handler: Start the background queue worker via Action Scheduler.
  */
-function adamson_archive_ajax_process_queue_item() {
+function adamson_archive_ajax_start_queue_worker() {
 	check_ajax_referer( 'adamson_archive_scan_nonce', 'nonce' );
 
-	$disable_delete = isset( $_POST['disable_delete'] ) && '1' === $_POST['disable_delete'];
-	$result         = adamson_archive_process_next_queue_item( $disable_delete );
+	if ( ! function_exists( 'as_enqueue_async_action' ) ) {
+		wp_send_json_error( array( 'message' => 'Background processing library not found. Please ensure the Action Scheduler files are in the theme directory.' ) );
+	}
 
-	if ( is_wp_error( $result ) ) {
-		wp_send_json_error( array( 'message' => $result->get_error_message() ) );
-	} else {
-		wp_send_json_success( $result );
+	$disable_delete = isset( $_POST['disable_delete'] ) && '1' === $_POST['disable_delete'] ? true : false;
+
+	// Enqueue the background action if it's not already scheduled.
+	if ( function_exists( 'as_next_scheduled_action' ) ) {
+		if ( false === as_next_scheduled_action( 'adamson_archive_run_queue' ) ) {
+			as_enqueue_async_action( 'adamson_archive_run_queue', array( 'disable_delete' => $disable_delete ) );
+		}
+	}
+
+	wp_send_json_success( array( 'message' => 'Background upload worker started.' ) );
+}
+add_action( 'wp_ajax_adamson_archive_start_queue_worker', 'adamson_archive_ajax_start_queue_worker' );
+
+/**
+ * Action Scheduler Callback: Process queue items in the background.
+ */
+function adamson_archive_as_run_queue_worker( $disable_delete ) {
+	// Process a batch of 3 items per background run to stay within server limits.
+	for ( $i = 0; $i < 3; $i++ ) {
+		$result = adamson_archive_process_next_queue_item( $disable_delete );
+		
+		// If queue is empty or we hit a systemic error, stop.
+		if ( is_wp_error( $result ) || ( isset( $result['processed'] ) && ! $result['processed'] ) ) {
+			return;
+		}
+	}
+
+	// If there are still items, schedule the next batch immediately.
+	if ( false === as_next_scheduled_action( 'adamson_archive_run_queue' ) ) {
+		as_enqueue_async_action( 'adamson_archive_run_queue', array( 'disable_delete' => $disable_delete ) );
 	}
 }
+add_action( 'adamson_archive_run_queue', 'adamson_archive_as_run_queue_worker' );
 
 /**
  * AJAX Handler: Delete all media, albums, and queue items.
